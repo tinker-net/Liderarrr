@@ -42,7 +42,7 @@ export const scanStatus = {
   error: null,
 };
 
-const isAudio = (f) => AUDIO_EXT.has(path.extname(f).toLowerCase());
+const isAudio = (f) => !f.startsWith('._') && AUDIO_EXT.has(path.extname(f).toLowerCase());
 const isLossless = (fmt) => /flac|alac|wav|ape|wavpack|aiff|pcm/i.test(fmt || '');
 // music-metadata devuelve varios MBID como ARRAY (álbumes con varios artistas).
 // Nos quedamos con el primero: pasar un array a una consulta de un solo hueco
@@ -75,6 +75,7 @@ async function scanTree(dir, onFolder) {
 function findCover(dir, files) {
   try {
     for (const f of fs.readdirSync(dir)) {
+      if (f.startsWith('._')) continue; // basura AppleDouble de macOS
       const ext = path.extname(f).toLowerCase();
       if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) continue;
       const base = path.basename(f, ext).toLowerCase();
