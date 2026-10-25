@@ -85,7 +85,7 @@ function walkKeep(root, rel = '') {
   for (const e of entries) {
     const r = rel ? path.join(rel, e.name) : e.name;
     if (e.isDirectory()) out.push(...walkKeep(root, r));
-    else if (e.isFile() && KEEP_EXT.has(path.extname(e.name).toLowerCase())) out.push(r);
+    else if (e.isFile() && !e.name.startsWith('._') && KEEP_EXT.has(path.extname(e.name).toLowerCase())) out.push(r);
   }
   return out;
 }
@@ -198,7 +198,7 @@ export async function pendingImports() {
   const ignored = ignoredSet();
   // índice de la biblioteca (artista + título normalizado) para avisar de "ya lo
   // tienes" y no crear copias organizadas por descuido.
-  const libKey = (artist, title) => `${String(artist || '').toLowerCase().trim()} ${normalizeForDup(title)}`;
+  const libKey = (artist, title) => `${String(artist || '').toLowerCase().trim()}�${normalizeForDup(title)}`;
   const libSet = new Set(
     db
       .prepare("SELECT album_artist, title FROM albums WHERE match_state != 'dismissed'")
