@@ -58,6 +58,7 @@ function biggestImage(dir) {
     return null;
   }
   for (const f of entries) {
+    if (f.startsWith('._')) continue; // basura AppleDouble de macOS
     if (!IMG_EXT.has(path.extname(f).toLowerCase())) continue;
     try {
       const s = fs.statSync(path.join(dir, f));
