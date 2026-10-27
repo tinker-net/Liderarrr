@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { HardDrive } from 'lucide-react';
 import { api, fmtBytes } from '../api.js';
 import { PageTitle, Stat, Spinner, ErrorMsg, DuplicateGroupPanel } from '../components.jsx';
+import QualityLists, { AutoSyncCard } from './QualityLists.jsx';
 
 export default function Quality() {
   const [ov, setOv] = useState(null);
@@ -42,6 +43,9 @@ export default function Quality() {
         <Stat label="Sin ReplayGain" value={ov.noReplaygain} sub="volumen sin normalizar" />
         <Stat label="Sin carátula" value={ov.noCover} />
       </div>
+
+      <AutoSyncCard />
+      <QualityLists />
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="card p-4">
