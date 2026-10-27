@@ -9,6 +9,25 @@ import { PageTitle } from '../components.jsx';
 
 const RELEASES = [
   {
+    version: '1.4.1',
+    title: '«Various Artists» deja de llenarte el calendario',
+    items: [
+      '«Various Artists» ya no se comporta como si fuera un artista. MusicBrainz le acredita decenas de miles de recopilatorios que no son de nadie en particular, y Liderarrr se los bajaba todos: el calendario se llenaba de discos ajenos y su ficha anunciaba cosas como «0 de 27.139 · faltan 27.134».',
+      'Ahora esos recopilatorios no salen en el calendario, no cuentan como huecos y no aparecen en novedades; su ficha explica que es el cajón de los recopilatorios, sin barra de completismo ni botón de seguir. Tus discos siguen donde estaban: no se toca ni un fichero.',
+      'Pasaba aunque no siguieras a «Various Artists», porque la discografía se refrescaba para todo artista identificado; por eso dejar de seguirlo no servía de nada. Lo que ya estaba guardado se limpia solo al arrancar.',
+      'Reconoce también las otras grafías de las etiquetas («VA», «V/A», «AA.VV.», «Varios Artistas», «Recopilatorio»), aunque esa ficha aún no esté identificada, sin tocar a artistas de verdad con nombres parecidos.',
+    ],
+  },
+  {
+    version: '1.4.0',
+    title: 'La hora del refresco nocturno la pones tú',
+    items: [
+      'La hora del refresco nocturno ya se elige en Ajustes → Refresco nocturno (0–23, de fábrica las 3 de la madrugada). Estaba clavada a las 03:00 en el código: si a esa hora tu NAS andaba con las copias o transcodificando, no había forma de moverla. El cambio se aplica sin reiniciar.',
+      'Esa pasada es la que escanea el disco, identifica lo pendiente, recalcula discografías y completismo, trae tus escuchas y refresca radares y novedades; la misma que el botón «Identificar y sincronizar».',
+      'Y ya no se pierde por medio minuto: antes hacía falta que coincidieran la hora Y el minuto en punto, así que un contenedor arrancado a las 03:00:30 se quedaba sin refresco hasta el día siguiente. Ahora basta la hora, corre una vez al día, y si no se dio (app parada, o acabas de cambiar la hora) se lanza pasadas 36 horas.',
+    ],
+  },
+  {
     version: '1.3.3',
     title: 'Enlazar un artista con MusicBrainz ya no choca con su propia ficha duplicada',
     items: [
