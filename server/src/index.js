@@ -125,6 +125,7 @@ import { artistPhotoFast, resolveArtistPhotoSlow, artistPhotoCandidates, applyAr
 import { diagnostics, pushEvent } from './diag.js';
 import { updateCheck } from './update.js';
 import * as q from './queries.js';
+import { registerLibrarySync } from './libsync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
@@ -167,7 +168,7 @@ if (process.env.LIDERARRR_AUTH) {
 } else {
   console.warn(
     '[Liderarrr] SIN autenticación: cualquiera que alcance este puerto puede leer y CAMBIAR tus\n' +
-    '           ajustes. Define LIDERARRR_AUTH="usuario:contraseña" si esto no está solo en tu red de casa.'
+    '            ajustes. Define LIDERARRR_AUTH="usuario:contraseña" si esto no está solo en tu red de casa.'
   );
 }
 
@@ -995,6 +996,10 @@ app.get('/api/quality/duplicates', async () => q.duplicates());
 app.get('/api/unidentified', async () => q.unidentified());
 app.get('/api/rarities', async () => q.rarities());
 app.get('/api/bootlegs', async () => q.bootlegs());
+
+// --- listados de calidad (44,1/48 kHz, sin ReplayGain, sin carátula) y sincronización
+// automática de la biblioteca (escanea y quita de la base lo que ya no está en disco).
+registerLibrarySync(app, { busy: () => refreshStatus.running || autoImportStatus.running });
 
 // marcar estado (rareza/orphan, bootleg, descartar, devolver a pendiente)
 app.post('/api/albums/:id/state', async (req, reply) => {
