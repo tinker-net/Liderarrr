@@ -4,6 +4,7 @@ import { CalendarClock, Plus, Check, Loader2, ExternalLink, Search, Star, Tag, X
 import { api, pollLidarrQueue } from '../api.js';
 import { PageTitle, Spinner, ErrorMsg, SearchModal, QuickSearch, AddToChallengeButton, WantButton, useLidarrEnabled } from '../components.jsx';
 import MonthCalendar from './MonthCalendar.jsx';
+import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff, rowSource } from '../sources.js';
 
 // Lanzamientos: cuatro vistas. «Próximos» (release groups por estrenar de tus artistas),
 // «Estrenados recientemente» (ya estrenados dentro de una ventana; por defecto este año),
@@ -931,6 +932,69 @@ function WantedPanel({ onSearch }) {
   );
 }
 
+// Selector de fuentes: casillas para encender/apagar cada fuente de novedades.
+function SourcePicker({ curators, off, setOff }) {
+  const [open, setOpen] = useState(false);
+  const sources = [
+    ...BASE_SOURCES,
+    ...curators.map((c) => ({
+      id: curatorSourceId(c.source, c.username),
+      label: `Radar · ${c.name || c.username}`,
+      hint: `${c.items} novedades`,
+    })),
+  ];
+  const onCount = sources.filter((s) => !off.has(s.id)).length;
+  const toggle = (id) =>
+    setOff((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      saveSourcesOff(n);
+      return n;
+    });
+  const setAll = (on) => {
+    const n = on ? new Set() : new Set(sources.map((s) => s.id));
+    saveSourcesOff(n);
+    setOff(n);
+  };
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-neutral-400 hover:text-gold-300 inline-flex items-center gap-1.5"
+        title="Elige de qué fuentes quieres ver novedades"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Radio size={13} /> Fuentes <span className="text-neutral-600">· {onCount}/{sources.length}</span>
+      </button>
+      {open && (
+        <div className="card p-3 mt-2 space-y-2">
+          <div className="flex gap-2">
+            <button onClick={() => setAll(true)} className="text-xs px-2 py-0.5 rounded border border-ink-700 bg-ink-850 hover:bg-ink-800">
+              Todas
+            </button>
+            <button onClick={() => setAll(false)} className="text-xs px-2 py-0.5 rounded border border-ink-700 bg-ink-850 hover:bg-ink-800">
+              Ninguna
+            </button>
+          </div>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {sources.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer min-w-0">
+                <input type="checkbox" checked={!off.has(s.id)} onChange={() => toggle(s.id)} />
+                <span className="truncate">{s.label}</span>
+                <span className="text-xs text-neutral-600 truncate">{s.hint}</span>
+              </label>
+            ))}
+          </div>
+          {curators.length === 0 && (
+            <p className="text-xs text-neutral-600">Los curadores del Radar aparecerán aquí cuando sigas alguno.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Calendar() {
   // Arranca en «Mes»: es la vista panorámica (todas las fuentes en un calendario), no una
   // lista más. Las demás pestañas son cortes concretos de lo mismo.
@@ -946,6 +1010,7 @@ export default function Calendar() {
   const [search, setSearch] = useState(null);
   const [labels, setLabels] = useState([]);
   const [curators, setCurators] = useState([]);
+  const [srcOff, setSrcOff] = useState(loadSourcesOff);
   // Lo que ya tienes NO se filtra en el servidor: viene siempre y la UI lo agrupa arriba,
   // plegado (ver OwnedSection). Un solo criterio para todas las pestañas, en vez de un
   // «ocultar lo que tengo» aquí y un «incluir lo que tengo» allá.
@@ -971,6 +1036,10 @@ export default function Calendar() {
 
   const loadLabels = () => api.trackedLabels().then(setLabels).catch(() => {});
   const loadCurators = () => api.curators().then(setCurators).catch(() => {});
+
+  useEffect(() => {
+    loadCurators(); // el selector de fuentes necesita los curadores en todas las pestañas, no solo en Radar
+  }, []);
 
   useEffect(() => {
     setRows(null);
@@ -1105,10 +1174,11 @@ export default function Calendar() {
   const isOwnedRow = (r) => !!(r.is_owned || r.owned);
   // Reparto común a TODAS las listas: lo que ya tienes se saca de los grupos por mes/semana y
   // se junta en la sección plegable de arriba, ordenado por fecha descendente.
-  const ownedRows = (rows || [])
+  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)));
+  const ownedRows = shownRows
     .filter(isOwnedRow)
     .sort((a, b) => (b.first_release || b.release_date || '').localeCompare(a.first_release || a.release_date || ''));
-  const freshRows = (rows || []).filter((r) => !isOwnedRow(r));
+  const freshRows = shownRows.filter((r) => !isOwnedRow(r));
 
   // En el Radar, los pre-pedidos / futuros van a su propia sección arriba (no
   // mezclados con lo ya estrenado dentro de la ventana), ordenados por fecha de
@@ -1303,7 +1373,9 @@ export default function Calendar() {
         )}
       </div>
 
-      {view === 'mes' && <MonthCalendar onSearch={setSearch} />}
+      {view !== 'quiero' && <SourcePicker curators={curators} off={srcOff} setOff={setSrcOff} />}
+
+      {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} />}
 
       {view === 'quiero' && <WantedPanel onSearch={setSearch} />}
 
@@ -1410,6 +1482,10 @@ export default function Calendar() {
       {err && <ErrorMsg>{err}</ErrorMsg>}
       {!rows && !err ? (
         <Spinner />
+      ) : rows && rows.length > 0 && shownRows.length === 0 ? (
+        <div className="card p-6 text-center text-neutral-400">
+          Las {rows.length} novedades de esta pestaña vienen de fuentes que tienes apagadas. Actívalas en «Fuentes».
+        </div>
       ) : rows && rows.length === 0 ? (
         <div className="card p-6 text-center text-neutral-400">
           {view === 'radar'
