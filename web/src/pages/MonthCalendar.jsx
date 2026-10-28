@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search, Download, ExternalLink, Loader2, Check } from 'lucide-react';
 import { api } from '../api.js';
 import { Spinner, AddToChallengeButton, WantButton } from '../components.jsx';
+import { kindSource } from '../sources.js';
 
 // Vista MES tipo Google Calendar: una rejilla mensual que junta TODAS las fuentes de
 // lanzamientos en su día — Próximos y Estrenados recientemente (MusicBrainz), De tus
@@ -39,12 +40,15 @@ function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, desc
     const d = (date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !artist || !title) return;
     const key = `${nkey(artist)}::${nkey(title)}`;
+    const src = kindSource(kind, extra);
     const cur = byKey.get(key);
     if (!cur) {
-      byKey.set(key, { date: d, artist, title, kinds: [kind], ...extra });
+      byKey.set(key, { date: d, artist, title, kinds: [kind], ksrc: { [kind]: [src] }, ...extra });
       return;
     }
     if (!cur.kinds.includes(kind)) cur.kinds.push(kind);
+    const srcs = (cur.ksrc[kind] ||= []);
+    if (!srcs.includes(src)) srcs.push(src);
     // completa metadatos que falten (rg_mbid, artist_id, url…), sin pisar los existentes
     for (const [k, v] of Object.entries(extra)) if (cur[k] == null && v != null) cur[k] = v;
   };
@@ -54,7 +58,7 @@ function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, desc
   for (const r of labels || []) add(r.first_release, r.artist, r.title, 'label', { rg_mbid: r.rg_mbid, artist_id: r.artist_id, labels: r.labels, is_owned: r.is_owned });
   for (const r of novedades || []) add(r.release_date, r.artist, r.title, 'novedad', { artist_id: r.artist_id, url: r.url, source: r.source, ahead: r.ahead });
   for (const r of singles || []) add(r.release_date, r.artist, r.title, 'single', { artist_id: r.artist_id, url: r.url, source: r.source, record_type: r.record_type });
-  for (const r of radar || []) add(r.release_date, r.artist, r.title, 'radar', { url: r.url });
+  for (const r of radar || []) add(r.release_date, r.artist, r.title, 'radar', { url: r.url, source: r.source, curator_username: r.curator_username });
   for (const r of descubre || []) add(r.release_date, r.artist, r.title, 'descubre', { url: r.url, source: r.source, reason: r.reason });
   // primary kind = el de mayor prioridad presente (para el color principal del punto)
   const evs = [...byKey.values()];
@@ -62,7 +66,7 @@ function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, desc
   return evs;
 }
 
-export default function MonthCalendar({ onSearch }) {
+export default function MonthCalendar({ onSearch, srcOff }) {
   const [events, setEvents] = useState(null);
   const [err, setErr] = useState(null);
   const [cursor, setCursor] = useState(() => {
@@ -113,14 +117,14 @@ export default function MonthCalendar({ onSearch }) {
   const byDay = useMemo(() => {
     const m = {};
     for (const e of events || []) {
-      const kinds = e.kinds.filter((k) => enabled[k]);
+      const kinds = e.kinds.filter((k) => enabled[k] && (e.ksrc[k] || []).some((s) => !srcOff?.has(s)));
       if (!kinds.length) continue;
       const primary = KIND_ORDER.find((k) => kinds.includes(k)) || kinds[0];
       (m[e.date] ||= []).push({ ...e, kinds, primary });
     }
     for (const k of Object.keys(m)) m[k].sort((a, b) => KIND_ORDER.indexOf(a.primary) - KIND_ORDER.indexOf(b.primary));
     return m;
-  }, [events, enabled]);
+  }, [events, enabled, srcOff]);
 
   // celdas de la rejilla: 6 semanas (42 días) desde el lunes de la 1ª semana del mes
   const cells = useMemo(() => {
