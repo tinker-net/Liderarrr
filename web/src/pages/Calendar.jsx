@@ -1,3 +1,4 @@
+import { formats, editions, matchesRelease } from '../releaseFilters.js';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarClock, Plus, Check, Loader2, ExternalLink, Search, Star, Tag, X, RefreshCw, Radio, Heart, ChevronDown, ChevronRight } from 'lucide-react';
@@ -997,9 +998,9 @@ function SourcePicker({ curators, off, setOff }) {
 }
 
 export default function Calendar() {
-  // Arranca en «Mes»: es la vista panorámica (todas las fuentes en un calendario), no una
-  // lista más. Las demás pestañas son cortes concretos de lo mismo.
-  const [view, setView] = useState('mes'); // mes | upcoming | recent | novedades | canciones | descubre | labels | radar | quiero
+  const [view, setView] = useState('recent');
+  const [format, setFormat] = useState('album');
+  const [edition, setEdition] = useState('all');
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
   const [all, setAll] = useState(false);
@@ -1175,7 +1176,7 @@ export default function Calendar() {
   const isOwnedRow = (r) => !!(r.is_owned || r.owned);
   // Reparto común a TODAS las listas: lo que ya tienes se saca de los grupos por mes/semana y
   // se junta en la sección plegable de arriba, ordenado por fecha descendente.
-  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)));
+  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)) && matchesRelease(r, format, edition));
   const ownedRows = shownRows
     .filter(isOwnedRow)
     .sort((a, b) => (b.first_release || b.release_date || '').localeCompare(a.first_release || a.release_date || ''));
@@ -1220,7 +1221,11 @@ export default function Calendar() {
 
   const tab = (id, label) => (
     <button
-      onClick={() => setView(id)}
+      onClick={() => {
+        setView(id);
+        if (id === 'canciones') setFormat('single');
+        else if (view === 'canciones' && format === 'single') setFormat('all');
+      }}
       className={`px-3 py-1.5 rounded-lg text-sm border ${
         view === id ? 'border-gold-500/50 bg-gold-500/15 text-gold-300' : 'border-ink-800 bg-ink-850 text-neutral-400'
       }`}
@@ -1374,9 +1379,23 @@ export default function Calendar() {
         )}
       </div>
 
+      {view !== 'quiero' && (
+        <div className="flex flex-wrap gap-3 mb-3">
+          <label className="text-sm">Formato
+            <select className="ml-2 rounded bg-ink-850 p-1" value={format} onChange={(e) => setFormat(e.target.value)}>
+              {Object.entries(formats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">Edición
+            <select className="ml-2 rounded bg-ink-850 p-1" value={edition} onChange={(e) => setEdition(e.target.value)}>
+              {Object.entries(editions).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
       {view !== 'quiero' && <SourcePicker curators={curators} off={srcOff} setOff={setSrcOff} />}
 
-      {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} />}
+      {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} format={format} edition={edition} />}
 
       {view === 'quiero' && <WantedPanel onSearch={setSearch} />}
 
@@ -1485,7 +1504,7 @@ export default function Calendar() {
         <Spinner />
       ) : rows && rows.length > 0 && shownRows.length === 0 ? (
         <div className="card p-6 text-center text-neutral-400">
-          Las {rows.length} novedades de esta pestaña vienen de fuentes que tienes apagadas. Actívalas en «Fuentes».
+          Ninguno de los {rows.length} lanzamientos coincide con las fuentes y los filtros seleccionados.
         </div>
       ) : rows && rows.length === 0 ? (
         <div className="card p-6 text-center text-neutral-400">

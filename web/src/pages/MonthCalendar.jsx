@@ -1,3 +1,4 @@
+import { matchesRelease } from '../releaseFilters.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search, Download, ExternalLink, Loader2, Check } from 'lucide-react';
@@ -66,7 +67,7 @@ function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, desc
   return evs;
 }
 
-export default function MonthCalendar({ onSearch, srcOff }) {
+export default function MonthCalendar({ onSearch, srcOff, format, edition }) {
   const [events, setEvents] = useState(null);
   const [err, setErr] = useState(null);
   const [cursor, setCursor] = useState(() => {
@@ -116,12 +117,16 @@ export default function MonthCalendar({ onSearch, srcOff }) {
   // fuentes se ve si AL MENOS una está activada; sus puntitos reflejan las activadas.
   const byDay = useMemo(() => {
     const m = {};
-    for (const event of events ? mergeEvents(events, enabled, srcOff) : []) {
+    if (!events) return m;
+    const visible = Object.fromEntries(Object.entries(events).map(([source, rows]) => [
+      source, (rows || []).filter((row) => matchesRelease(row, format, edition)),
+    ]));
+    for (const event of mergeEvents(visible, enabled, srcOff)) {
       (m[event.date] ||= []).push(event);
     }
     for (const k of Object.keys(m)) m[k].sort((a, b) => KIND_ORDER.indexOf(a.primary) - KIND_ORDER.indexOf(b.primary));
     return m;
-  }, [events, enabled, srcOff]);
+  }, [events, enabled, srcOff, format, edition]);
 
   // celdas de la rejilla: 6 semanas (42 días) desde el lunes de la 1ª semana del mes
   const cells = useMemo(() => {
