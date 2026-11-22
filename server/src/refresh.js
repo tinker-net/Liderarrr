@@ -92,7 +92,7 @@ function buildSteps() {
         if (r.error || r.scanError) throw new Error(r.error || r.scanError);
         const summary = [`${scanStatus.albumsDone} álbumes leídos`, `${scanStatus.tracksDone} pistas`];
         if (r.removed) summary.push(`${r.removed} fichas retiradas`);
-        if (r.blocked) summary.push(`${r.blocked.count} bajas pendientes de confirmar en Calidad y disco`);
+        if (r.blocked) summary.push(`${r.blocked.count} bajas pendientes de confirmar en Ajustes → Tu música`);
         if (r.skippedRoots.length) summary.push(`${r.skippedRoots.length} carpetas omitidas`);
         return summary.join(' · ');
       },

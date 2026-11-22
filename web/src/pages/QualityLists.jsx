@@ -1,29 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Copy, RefreshCw } from 'lucide-react';
+import { Copy } from 'lucide-react';
+import { api } from '../api.js';
 import { Spinner } from '../components.jsx';
-
-// Listados de calidad («¿cuáles son?») y estado de la sincronización automática. Es un
-// componente aparte para no tocar nada de lo que ya hay en la página de Calidad: Quality.jsx
-// solo lo coloca. Habla con sus propias rutas nuevas (/api/quality/list*, /api/autosync*).
-
-async function getJson(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    let msg = `Error ${res.status}`;
-    try {
-      msg = (await res.json()).error || msg;
-    } catch {
-      /* noop */
-    }
-    throw new Error(msg);
-  }
-  return res.json();
-}
 
 const fmtRate = (hz) => `${(hz / 1000).toLocaleString('es', { maximumFractionDigits: 1 })} kHz`;
 const PAGE = 200; // filas por «mostrar más»: miles de enlaces de golpe harían lenta la página
@@ -42,7 +21,7 @@ export default function QualityLists() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    getJson('/quality/lists')
+    api.qualityLists()
       .then(setSummary)
       .catch((e) => setErr(e.message));
   }, []);
@@ -78,8 +57,7 @@ export default function QualityLists() {
     setListError(null);
     setQ('');
     setLimit(PAGE);
-    const qs = `kind=${current.kind}${current.rate ? `&rate=${current.rate}` : ''}`;
-    getJson(`/quality/list?${qs}`)
+    api.qualityList(current.kind, current.rate)
       .then((r) => alive && setList(r.albums))
       .catch((e) => alive && setListError(e.message));
     return () => {
@@ -212,173 +190,6 @@ export default function QualityLists() {
             )}
           </div>
         </>
-      )}
-    </div>
-  );
-}
-
-// ───────────────────── sincronización automática ─────────────────────
-
-const INTERVALS = [
-  [15, 'cada 15 min'],
-  [30, 'cada 30 min'],
-  [60, 'cada hora'],
-  [180, 'cada 3 horas'],
-  [360, 'cada 6 horas'],
-  [720, 'cada 12 horas'],
-  [1440, 'una vez al día'],
-];
-
-export function AutoSyncCard() {
-  const [info, setInfo] = useState(null);
-  const [err, setErr] = useState(null);
-
-  const load = useCallback(
-    () =>
-      getJson('/autosync')
-        .then((i) => {
-          setInfo(i);
-          setErr(null);
-        })
-        .catch((e) => setErr(e.message)),
-    []
-  );
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const running = !!info?.status?.running;
-  useEffect(() => {
-    const t = setInterval(load, running ? 2000 : 10_000);
-    return () => clearInterval(t);
-  }, [running, load]);
-
-  const run = async (body) => {
-    try {
-      await getJson('/autosync/run', { method: 'POST', body });
-    } catch (e) {
-      setErr(e.message);
-    }
-    load();
-  };
-  const saveConfig = async (body) => {
-    try {
-      setInfo(await getJson('/autosync/config', { method: 'POST', body }));
-    } catch (e) {
-      setErr(e.message);
-    }
-  };
-
-  if (err && !info) return <div className="card p-4 mb-6 text-sm text-red-400">Sincronización automática: {err}</div>;
-  if (!info) return null;
-
-  const last = info.last;
-  const blocked = !running && last?.blocked;
-  const fmtDate = (ms) => new Date(ms).toLocaleString('es');
-  const st = info.status;
-
-  return (
-    <div className="card p-4 mb-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm text-neutral-400">Sincronización automática</h2>
-          <p className="text-xs text-neutral-600 mt-0.5">
-            Detecta cambios en las carpetas de música y actualiza la biblioteca. El intervalo se usa como comprobación de respaldo.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-sm text-neutral-300">
-            <input
-              type="checkbox"
-              checked={info.enabled}
-              onChange={(e) => saveConfig({ enabled: e.target.checked })}
-            />
-            Activada
-          </label>
-          <select
-            value={info.intervalMin}
-            onChange={(e) => saveConfig({ intervalMin: Number(e.target.value) })}
-            disabled={!info.enabled}
-            className="text-sm px-2 py-1.5 rounded-lg bg-ink-900 border border-ink-800 disabled:opacity-50"
-          >
-            {INTERVALS.some(([m]) => m === info.intervalMin) ? null : (
-              <option value={info.intervalMin}>cada {info.intervalMin} min</option>
-            )}
-            {INTERVALS.map(([m, label]) => (
-              <option key={m} value={m}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => run({})}
-            disabled={running}
-            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border border-gold-500/40 bg-gold-500/10 text-gold-300 hover:bg-gold-500/20 disabled:opacity-60"
-          >
-            <RefreshCw size={14} className={running ? 'animate-spin' : ''} />
-            {running ? (st.phase === 'scanning' ? 'Escaneando…' : 'Comprobando…') : 'Sincronizar ahora'}
-          </button>
-        </div>
-      </div>
-
-      {err && <p className="text-xs text-red-400 mt-2">{err}</p>}
-
-      {last && !running && (
-        <p className="text-xs text-neutral-500 mt-3">
-          Última pasada: {fmtDate(last.at)} ({last.trigger === 'watch' ? 'cambio en disco' : last.trigger === 'nightly' ? 'nocturna' : last.trigger === 'auto' ? 'automática' : 'manual'}) ·{' '}
-          {last.removed > 0
-            ? `${last.removed.toLocaleString('es')} ${last.removed === 1 ? 'álbum quitado' : 'álbumes quitados'} de la base (${last.removedTracks.toLocaleString('es')} pistas)`
-            : 'nada que quitar'}
-          {last.error || last.scanError ? ` · error: ${last.error || last.scanError}` : ''}
-        </p>
-      )}
-      {!last && <p className="text-xs text-neutral-600 mt-3">Todavía no se ha hecho ninguna pasada.</p>}
-
-      {last?.removed > 0 && last.removedSample?.length > 0 && !running && (
-        <details className="mt-2 text-xs text-neutral-500">
-          <summary className="cursor-pointer hover:text-neutral-300">Ver cuáles</summary>
-          <ul className="mt-1 space-y-0.5">
-            {last.removedSample.map((s, i) => (
-              <li key={i} className="truncate">{s}</li>
-            ))}
-            {last.removed > last.removedSample.length && <li>…y {last.removed - last.removedSample.length} más</li>}
-          </ul>
-        </details>
-      )}
-
-      {last?.skippedRoots?.length > 0 && !running && (
-        <p className="text-xs text-amber-400/80 mt-2">
-          No se pudo leer la carpeta de música ({last.skippedRoots.join(', ')}): se ha omitido para no borrar nada por error.
-        </p>
-      )}
-
-      {blocked && (
-        <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <div className="flex items-start gap-2 text-amber-300">
-            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              Pasada detenida por seguridad: {last.blocked.count.toLocaleString('es')} de{' '}
-              {last.blocked.evaluated.toLocaleString('es')} álbumes parecen haber desaparecido. Eso es mucho de golpe
-              y suele ser una unidad de red sin montar, no un borrado real. Comprueba que tu música está accesible. Si
-              los has quitado tú a propósito, confírmalo.
-              <ul className="mt-1.5 text-xs text-amber-200/70 space-y-0.5">
-                {last.blocked.sample.map((s, i) => (
-                  <li key={i} className="truncate">{s}</li>
-                ))}
-                {last.blocked.count > last.blocked.sample.length && <li>…y más</li>}
-              </ul>
-              <button
-                onClick={() => {
-                  if (window.confirm(`¿Quitar de la base de datos ${last.blocked.count} álbumes que ya no están en disco? (No se borra ningún fichero.)`))
-                    run({ confirmation: last.blocked.confirmation, scan: false });
-                }}
-                className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-amber-500/50 text-amber-200 hover:bg-amber-500/20"
-              >
-                Quitarlos de la base igualmente
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

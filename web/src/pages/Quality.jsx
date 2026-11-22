@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { HardDrive } from 'lucide-react';
 import { api, fmtBytes } from '../api.js';
 import { PageTitle, Stat, Spinner, ErrorMsg, DuplicateGroupPanel } from '../components.jsx';
-import QualityLists, { AutoSyncCard } from './QualityLists.jsx';
+import QualityLists from './QualityLists.jsx';
 import { aviso } from '../avisos.jsx';
 
 export default function Quality() {
@@ -45,7 +45,6 @@ export default function Quality() {
         <Stat label="Sin carátula" value={ov.noCover} />
       </div>
 
-      <AutoSyncCard />
       <QualityLists />
 
       <div className="grid md:grid-cols-2 gap-4">
