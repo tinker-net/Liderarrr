@@ -201,7 +201,7 @@ function UpdateBanner() {
 const IMPACT = "Impact,'Haettenschweiler','Arial Narrow',sans-serif";
 function Logo() {
   return (
-    <svg viewBox="0 0 640 236" className="w-full h-auto" role="img" aria-label="Liderarr">
+    <svg viewBox="0 0 640 236" className="w-full h-auto" role="img" aria-label="Liderarrr · Tinkernet Edition">
       <defs>
         <filter id="logogrit" x="-5%" y="-5%" width="110%" height="118%">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
@@ -237,6 +237,15 @@ function Logo() {
         />
         <g strokeWidth="5" strokeLinecap="round" className="stroke-[var(--text-body)]">
           <path d="M516,96 L556,74" /><path d="M520,120 L566,116" /><path d="M512,140 L552,152" />
+        </g>
+      </g>
+      <g transform="translate(530 174) rotate(-14)">
+        <rect x="-98" y="-29" width="196" height="58" rx="4" fill="#fff4da" stroke="#932d23" strokeWidth="5" />
+        <rect x="-92" y="-23" width="184" height="46" rx="2" fill="none" stroke="#932d23" strokeWidth="2" />
+        <image href="/tinkernet.png" x="-87" y="-20" width="40" height="40" />
+        <g fill="#80261e" textAnchor="middle" fontFamily="system-ui,sans-serif" fontWeight="900">
+          <text x="20" y="-1" fontSize="22">TINKERNET</text>
+          <text x="20" y="17" fontSize="16" letterSpacing="2">EDITION</text>
         </g>
       </g>
     </svg>
