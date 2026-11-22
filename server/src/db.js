@@ -655,6 +655,8 @@ function ensureColumn(table, column, decl) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${decl}`);
   }
 }
+ensureColumn('label_release_groups','primary_type',"primary_type TEXT DEFAULT 'Album'");
+ensureColumn('label_release_groups','secondary_types','secondary_types TEXT');
 // Reservado para cuando el esquema evolucione entre versiones.
 // novedades externas: marca de «adelantada» (MB aún no la lista) para las que ya existían
 ensureColumn('external_releases', 'ahead', 'ahead INTEGER DEFAULT 1');

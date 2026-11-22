@@ -1,10 +1,10 @@
-import { matchesRelease } from '../releaseFilters.js';
+import { agendaEvents } from '../agenda.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search, Download, ExternalLink, Loader2, Check } from 'lucide-react';
 import { api } from '../api.js';
 import { Spinner, AddToChallengeButton, WantButton } from '../components.jsx';
-import { kindSource } from '../sources.js';
+
 import { aviso } from '../avisos.jsx';
 
 // Vista MES tipo Google Calendar: una rejilla mensual que junta TODAS las fuentes de
@@ -32,41 +32,9 @@ const nkey = (s) => String(s || '').normalize('NFD').toLowerCase().replace(/[^a-
 const iso = (d) => d.toISOString().slice(0, 10);
 const monthsAgoIso = (n) => iso(new Date(Date.now() - n * 30 * 86400000));
 
-// Normaliza y deduplica los eventos de todas las fuentes. Un mismo disco puede venir de
-// varias fuentes: se funde en uno solo (mayor prioridad manda la fecha; se acumulan las
-// «kinds» para pintar varios puntitos).
-function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, descubre }, enabled, srcOff) {
-  const byKey = new Map();
-  const add = (date, artist, title, kind, extra = {}) => {
-    const d = (date || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !artist || !title) return;
-    const key = `${nkey(artist)}::${nkey(title)}`;
-    const src = kindSource(kind, extra);
-    if (!enabled[kind] || srcOff?.has(src)) return;
-    const cur = byKey.get(key);
-    if (!cur) {
-      byKey.set(key, { date: d, artist, title, kinds: [kind], ...extra });
-      return;
-    }
-    if (!cur.kinds.includes(kind)) cur.kinds.push(kind);
-    // completa metadatos que falten (rg_mbid, artist_id, url…), sin pisar los existentes
-    for (const [k, v] of Object.entries(extra)) if (cur[k] == null && v != null) cur[k] = v;
-  };
-  // orden de prioridad: la primera fuente que aporta un disco fija su fecha
-  for (const r of upcoming || []) add(r.first_release, r.artist, r.title, 'upcoming', { rg_mbid: r.rg_mbid, artist_id: r.artist_id, artist_mbid: r.artist_mbid, is_owned: r.is_owned });
-  for (const r of recent || []) add(r.first_release, r.artist, r.title, 'recent', { rg_mbid: r.rg_mbid, artist_id: r.artist_id, is_owned: r.is_owned });
-  for (const r of labels || []) add(r.first_release, r.artist, r.title, 'label', { rg_mbid: r.rg_mbid, artist_id: r.artist_id, labels: r.labels, is_owned: r.is_owned });
-  for (const r of novedades || []) add(r.release_date, r.artist, r.title, 'novedad', { artist_id: r.artist_id, url: r.url, source: r.source, ahead: r.ahead });
-  for (const r of singles || []) add(r.release_date, r.artist, r.title, 'single', { artist_id: r.artist_id, url: r.url, source: r.source, record_type: r.record_type });
-  for (const r of radar || []) add(r.release_date === r.list_date && !r.first_release ? null : r.release_date, r.artist, r.title, 'radar', { url: r.url, source: r.source, curator_username: r.curator_username });
-  for (const r of descubre || []) add(r.release_date, r.artist, r.title, 'descubre', { url: r.url, source: r.source, reason: r.reason });
-  // primary kind = el de mayor prioridad presente (para el color principal del punto)
-  const evs = [...byKey.values()];
-  for (const e of evs) e.primary = KIND_ORDER.find((k) => e.kinds.includes(k)) || e.kinds[0];
-  return evs;
-}
-
 export default function MonthCalendar({ onSearch, srcOff, format, edition }) {
+  const [layout, setLayout] = useState('week');
+  const [owned, setOwned] = useState(false);
   const [events, setEvents] = useState(null);
   const [err, setErr] = useState(null);
   const [cursor, setCursor] = useState(() => {
@@ -97,35 +65,31 @@ export default function MonthCalendar({ onSearch, srcOff, format, edition }) {
 
   useEffect(() => {
     const since = monthsAgoIso(14); // ventana amplia; navegar de mes solo re-agrupa
-    Promise.all([
-      api.upcoming(true).catch(() => []),
-      api.recentReleases(since, true).catch(() => []),
-      api.labelReleases(since).catch(() => []),
-      api.radar(since, false).catch(() => []),
-      api.newReleases().catch(() => []),
-      api.newSongs(400, false).catch(() => []), // singles (retención 45 d en el servidor)
-      api.globalReleases(45, false, false).catch(() => []), // descubrimiento por afinidad
-    ])
-      .then(([upcoming, recent, labels, radar, novedades, singles, descubre]) =>
-        setEvents({ upcoming, recent, labels, radar, novedades, singles, descubre })
-      )
-      .catch((e) => setErr(e.message));
+    let active = true;
+    const requests = { upcoming: api.upcoming(true), recent: api.recentReleases(since,true),
+      label: api.labelReleases(since), radar: api.radar(since,false), novedad: api.newReleases(true),
+      single: api.newSongs(400,true), descubre: api.globalReleases(45,false,true) };
+    Promise.allSettled(Object.values(requests)).then(results => {
+      if (!active) return;
+      const data = {};
+      const failed = [];
+      Object.keys(requests).forEach((key,i) => {
+        const response = results[i];
+        data[key] = response.status === 'fulfilled' ? response.value : [];
+        if (response.status === 'rejected') failed.push(KIND[key].label);
+      });
+      setEvents(data);
+      setErr(failed.join(', '));
+    });
+    return () => { active = false; };
   }, []);
-
-  // agrupa por día (YYYY-MM-DD), mostrando solo los tipos activados. Un evento con varias
-  // fuentes se ve si AL MENOS una está activada; sus puntitos reflejan las activadas.
+  const visible = useMemo(() => events ? agendaEvents(events,enabled,srcOff,format,edition)
+    .filter(e => owned || !e.is_owned) : [], [events,enabled,srcOff,format,edition,owned]);
   const byDay = useMemo(() => {
-    const m = {};
-    if (!events) return m;
-    const visible = Object.fromEntries(Object.entries(events).map(([source, rows]) => [
-      source, (rows || []).filter((row) => matchesRelease(row, format, edition)),
-    ]));
-    for (const event of mergeEvents(visible, enabled, srcOff)) {
-      (m[event.date] ||= []).push(event);
-    }
-    for (const k of Object.keys(m)) m[k].sort((a, b) => KIND_ORDER.indexOf(a.primary) - KIND_ORDER.indexOf(b.primary));
-    return m;
-  }, [events, enabled, srcOff, format, edition]);
+    const days = {};
+    for (const e of visible) (days[e.date] ||= []).push(e);
+    return days;
+  }, [visible]);
 
   // celdas de la rejilla: 6 semanas (42 días) desde el lunes de la 1ª semana del mes
   const cells = useMemo(() => {
@@ -170,13 +134,20 @@ export default function MonthCalendar({ onSearch, srcOff, format, edition }) {
     }
   };
 
-  if (err) return <div className="card p-4 text-red-300">{err}</div>;
+
   if (!events) return <Spinner label="Reuniendo todas las fuentes…" />;
 
   const selEvents = byDay[selected] || [];
 
   return (
     <div>
+      {err && <p role="alert">Fuentes que no han respondido · {err}</p>}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <button className="btn" onClick={() => setLayout(layout === 'week' ? 'month' : 'week')}>{layout === 'week' ? 'Ver mes' : 'Ver semana'}</button>
+        <label><input type="checkbox" checked={owned} onChange={e => setOwned(e.target.checked)} /> Incluir los que ya tengo</label>
+      </div>
+      {layout === 'week' && <WeekAgenda events={visible} onSearch={onSearch} />}
+      {layout === 'month' && <>
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-1">
           <button onClick={() => go(-1)} className="p-1.5 rounded-lg border border-ink-800 bg-ink-850 hover:bg-ink-800" aria-label="Mes anterior">
@@ -344,6 +315,36 @@ export default function MonthCalendar({ onSearch, srcOff, format, edition }) {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
+}
+
+function WeekAgenda({events,onSearch}) {
+  const [offset,setOffset] = useState(0);
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
+  start.setUTCDate(start.getUTCDate() - (start.getUTCDay()+6)%7 + offset*7);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate()+6);
+  const rows = events.filter(e => e.date.length === 10 && e.date >= iso(start) && e.date <= iso(end));
+  const partial = events.filter(e => e.date.length < 10 && (iso(start).startsWith(e.date) || iso(end).startsWith(e.date)));
+  const display = date => new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(date);
+  const next = events.find(e => e.date.length === 10 && e.date > iso(end));
+  const list = items => items.map(e => <button key={JSON.stringify([e.id,e.date,e.category])}
+    onClick={() => onSearch(`${e.artist} ${e.title}`)}
+    className="card w-full p-3 mb-2 text-left">
+    <small>{e.date} · {e.origins.join(' · ')}{e.reason && ` · ${e.reason}`}</small><div>{e.artist} — <strong>{e.title}</strong></div>
+  </button>);
+  return <section>
+    <div className="flex flex-wrap items-center gap-3 mb-3">
+      <button aria-label="Semana anterior" onClick={() => setOffset(offset-1)}>←</button>
+      <strong>{display(start)} – {display(end)}</strong>
+      <button aria-label="Semana siguiente" onClick={() => setOffset(offset+1)}>→</button>
+      <button onClick={() => setOffset(0)}>Esta semana</button>
+    </div>
+    {rows.length ? list(rows) : <p className="mb-4 text-neutral-400">Sin entradas esta semana con estos filtros.</p>}
+    {!rows.length && next && <button className="btn mb-3" onClick={() => setOffset(offset + Math.floor((Date.parse(next.date) - start.getTime()) / 604800000))}>Ir a la próxima entrada · {next.date}</button>}
+    {!!partial.length && <><h3>Anunciados sin día exacto</h3>{list(partial)}</>}
+  </section>;
 }

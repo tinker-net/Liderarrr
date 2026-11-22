@@ -74,7 +74,7 @@ function ingest(curatorId, lists, source = 'buymusicclub') {
           artist: it.artist || null,
           title: it.title || it.releaseTitle || null,
           label: it.label || null,
-          release_date: day(it.releaseDate) || day(l.published_at),
+          release_date: day(it.releaseDate),
           url: it.url || null,
           image: it.image || null,
           type: it.type || null,
@@ -227,7 +227,7 @@ export function radarFeed({ since = null, unownedOnly = false } = {}) {
          (SELECT MIN(rg.first_release) FROM release_groups rg
           WHERE rg.rg_mbid = ri.rg_mbid AND rg.first_release != '') AS original_date
        FROM radar_items ri JOIN curators c ON c.id = ri.curator_id
-       WHERE ri.dismissed = 0 AND ri.release_date IS NOT NULL AND ri.release_date >= @cutoff
+       WHERE ri.dismissed = 0 AND (ri.release_date >= @cutoff OR ri.list_date >= @cutoff)
        ORDER BY ri.release_date DESC, ri.artist COLLATE NOCASE`
     )
     .all({ cutoff });

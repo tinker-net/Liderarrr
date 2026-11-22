@@ -95,7 +95,7 @@ export function upcoming({ onlyTracked = true } = {}) {
   const sinVarios = excludeVariousSql();
   const rows = db
     .prepare(
-      `SELECT rg.rg_mbid, rg.title, rg.first_release, rg.primary_type, rg.artist_id, rg.artist_mbid,
+      `SELECT rg.rg_mbid, rg.title, rg.first_release, rg.primary_type, rg.secondary_types, rg.artist_id, rg.artist_mbid,
         ar.name AS artist,
         (SELECT 1 FROM lidarr_albums la WHERE la.rg_mbid = rg.rg_mbid) AS in_lidarr,
         (SELECT 1 FROM tracked_artists ta WHERE ta.artist_id = rg.artist_id) AS tracked,
@@ -127,7 +127,7 @@ export function recentlyReleased({ since = null, onlyTracked = false } = {}) {
   const sinVarios = excludeVariousSql();
   const rows = db
     .prepare(
-      `SELECT rg.rg_mbid, rg.title, rg.first_release, rg.primary_type, rg.artist_id, rg.artist_mbid,
+      `SELECT rg.rg_mbid, rg.title, rg.first_release, rg.primary_type, rg.secondary_types, rg.artist_id, rg.artist_mbid,
         ar.name AS artist, rg.owned_album_id,
         (SELECT 1 FROM lidarr_albums la WHERE la.rg_mbid = rg.rg_mbid) AS in_lidarr,
         (SELECT 1 FROM tracked_artists ta WHERE ta.artist_id = rg.artist_id) AS tracked,
@@ -137,8 +137,7 @@ export function recentlyReleased({ since = null, onlyTracked = false } = {}) {
        FROM release_groups rg
        JOIN artists ar ON ar.id = rg.artist_id
        ${trackedJoin}
-       WHERE rg.is_upcoming = 0 AND rg.primary_type = 'Album'
-         AND (rg.secondary_types IS NULL OR rg.secondary_types = '[]')
+       WHERE rg.is_upcoming = 0
          AND rg.first_release >= @cutoff AND rg.first_release <= @today
          AND rg.rg_mbid NOT IN (SELECT rg_mbid FROM dismissed_albums)
          ${sinVarios}

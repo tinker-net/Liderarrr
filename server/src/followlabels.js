@@ -14,11 +14,11 @@ const insLabel = db.prepare(
      disambiguation=excluded.disambiguation, country=excluded.country`
 );
 const upsertRg = db.prepare(
-  `INSERT INTO label_release_groups (rg_mbid, label_mbid, title, artist_credit, artist_mbid, first_release, fetched_at)
-   VALUES (@rg_mbid, @label_mbid, @title, @artist_credit, @artist_mbid, @first_release, @fetched_at)
+  `INSERT INTO label_release_groups (rg_mbid, label_mbid, title, artist_credit, artist_mbid, first_release, primary_type, secondary_types, fetched_at)
+   VALUES (@rg_mbid, @label_mbid, @title, @artist_credit, @artist_mbid, @first_release, @primary_type, @secondary_types, @fetched_at)
    ON CONFLICT(rg_mbid, label_mbid) DO UPDATE SET title=excluded.title,
      artist_credit=excluded.artist_credit, artist_mbid=excluded.artist_mbid,
-     first_release=excluded.first_release, fetched_at=excluded.fetched_at`
+     primary_type=excluded.primary_type, secondary_types=excluded.secondary_types, first_release=excluded.first_release, fetched_at=excluded.fetched_at`
 );
 
 // Sigue un sello y trae su catálogo en segundo plano (labelReleaseGroups es lento).
@@ -71,6 +71,8 @@ export async function refreshLabel(mbid) {
         artist_credit: rg.artist || null,
         artist_mbid: rg.artist_mbid || null,
         first_release: rg.first_release || null,
+        primary_type: rg.primary_type,
+        secondary_types: rg.secondary_types,
         fetched_at: now,
       });
     }
@@ -120,7 +122,7 @@ export function labelReleases({ since = null } = {}) {
   const today = new Date().toISOString().slice(0, 10);
   return db
     .prepare(
-      `SELECT lrg.rg_mbid, lrg.title, lrg.artist_credit AS artist, lrg.artist_mbid, lrg.first_release,
+      `SELECT lrg.rg_mbid, lrg.title, lrg.artist_credit AS artist, lrg.artist_mbid, lrg.first_release, lrg.primary_type, lrg.secondary_types,
         GROUP_CONCAT(DISTINCT tl.name) AS labels,
         (SELECT ar.id FROM artists ar WHERE ar.mbid = lrg.artist_mbid) AS artist_id,
         (SELECT 1 FROM albums a WHERE a.rg_mbid = lrg.rg_mbid) AS is_owned,
@@ -141,6 +143,5 @@ export function labelReleases({ since = null } = {}) {
       in_lidarr: !!r.in_lidarr,
       tracked: !!r.tracked,
       is_upcoming: r.first_release > today,
-      primary_type: 'Album',
     }));
 }

@@ -540,10 +540,10 @@ export async function labelReleaseGroups(labelMbid, { maxReleases = 5000 } = {})
     for (const rel of page) {
       const rg = rel['release-group'];
       if (!rg || rgs.has(rg.id)) continue;
-      if ((rg['primary-type'] || null) !== 'Album') continue;
-      if ((rg['secondary-types'] || []).length) continue;
       const credit = rel['artist-credit'] || [];
       rgs.set(rg.id, {
+        primary_type: rg['primary-type'] || null,
+        secondary_types: JSON.stringify(rg['secondary-types'] || []),
         rg_mbid: rg.id,
         title: rg.title,
         artist: credit.map((a) => a.name).join(''),

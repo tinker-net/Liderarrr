@@ -20,11 +20,11 @@ function releaseEdition(row) {
   if (/\b(?:reissue(?:d)?|reedici[oó]n|remaster(?:ed|izado)?|anniversary edition)\b/i.test(row.title || '')) return 'reissue';
   // Las fechas de un release group de MusicBrainz corresponden al primer lanzamiento.
   if (row.first_release && (!row.release_date || row.first_release === row.release_date)) return 'new';
-  if (row.first_release && row.release_date > row.first_release) return 'reissue';
+  if (row.first_release && row.release_date && !row.release_date.startsWith(row.first_release) && row.release_date > row.first_release) return 'reissue';
   return 'unknown';
 }
 
 export function matchesRelease(row, format, edition) {
-  return (format === 'all' || releaseFormat(row) === format) &&
+  return (format === 'all' || releaseFormat(row) === format || String(row.primary_type || row.record_type || '').toLowerCase() === format || (['live','compilation'].includes(format) && String(row.secondary_types || '').toLowerCase().includes(format))) &&
     (edition === 'all' || releaseEdition(row) === edition);
 }

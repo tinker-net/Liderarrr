@@ -998,6 +998,7 @@ function SourcePicker({ curators, off, setOff }) {
 }
 
 export default function Calendar() {
+  const [manage,setManage] = useState(false);
   const [view, setView] = useState('mes');
   const [format, setFormat] = useState('all');
   const [edition, setEdition] = useState('new');
@@ -1176,7 +1177,7 @@ export default function Calendar() {
   const isOwnedRow = (r) => !!(r.is_owned || r.owned);
   // Reparto común a TODAS las listas: lo que ya tienes se saca de los grupos por mes/semana y
   // se junta en la sección plegable de arriba, ordenado por fecha descendente.
-  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)) && matchesRelease(r, format, edition));
+  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)) && matchesRelease(r, format, edition === 'radar' ? 'all' : edition));
   const ownedRows = shownRows
     .filter(isOwnedRow)
     .sort((a, b) => (b.first_release || b.release_date || '').localeCompare(a.first_release || a.release_date || ''));
@@ -1223,6 +1224,7 @@ export default function Calendar() {
     <button
       onClick={() => {
         setView(id);
+        setEdition('all');
         if (id === 'canciones') setFormat('single');
         else if (view === 'canciones' && format === 'single') setFormat('all');
       }}
@@ -1319,15 +1321,19 @@ export default function Calendar() {
       <QuickSearch />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {tab('mes', '📅 Mes')}
+        {[['new','Estrenos'],['reissue','Reediciones'],['radar','Radar'],['unknown','Sin verificar']].map(([key,label]) =>
+          <button key={key} className={view === 'mes' && edition === key ? 'btn text-gold-300' : 'btn'} aria-pressed={view === 'mes' && edition === key}
+            onClick={() => {setView('mes');setEdition(key);}}>{label}</button>)}
+        <button className="btn" aria-expanded={manage} onClick={() => setManage(!manage)}>Fuentes y gestión</button>
+        {manage && <>
         {tab('upcoming', 'Próximos')}
         {tab('recent', 'Estrenados recientemente')}
         {tab('novedades', '💿 Discos nuevos')}
         {tab('canciones', '🎵 Canciones nuevas')}
         {tab('descubre', '🌐 Descubre')}
         {tab('labels', 'De tus sellos')}
-        {tab('radar', 'Radar')}
-        {tab('quiero', '♥ Lo quiero')}
+        {tab('radar', 'Curadores')}
+        {tab('quiero', '♥ Lo quiero')}</>}
         {(view === 'upcoming' || view === 'recent') && (
           <label className="flex items-center gap-2 text-sm text-neutral-400 ml-auto cursor-pointer">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
@@ -1386,11 +1392,11 @@ export default function Calendar() {
               {Object.entries(formats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
-          <label className="text-sm">Edición
+          {view !== 'mes' && <label className="text-sm">Edición
             <select className="ml-2 rounded bg-ink-850 p-1" value={edition} onChange={(e) => setEdition(e.target.value)}>
               {Object.entries(editions).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
-          </label>
+          </label>}
         </div>
       )}
       {view !== 'quiero' && <SourcePicker curators={curators} off={srcOff} setOff={setSrcOff} />}
