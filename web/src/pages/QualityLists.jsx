@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Copy } from 'lucide-react';
 import { api } from '../api.js';
+import { copyText } from '../clipboard.js';
 import { Spinner } from '../components.jsx';
 
 const fmtRate = (hz) => `${(hz / 1000).toLocaleString('es', { maximumFractionDigits: 1 })} kHz`;
@@ -18,7 +19,7 @@ export default function QualityLists() {
   const [list, setList] = useState(null); // null = cargando
   const [q, setQ] = useState('');
   const [limit, setLimit] = useState(PAGE);
-  const [copied, setCopied] = useState(false);
+  const [copyResult, setCopyResult] = useState(null);
 
   useEffect(() => {
     api.qualityLists()
@@ -72,14 +73,12 @@ export default function QualityLists() {
     return list.filter((a) => `${a.album_artist} ${a.title} ${a.path || ''}`.toLowerCase().includes(needle));
   }, [list, q]);
 
+  const result = copyResult?.albums === filtered ? copyResult : null;
   const copyAll = async () => {
-    try {
-      await navigator.clipboard.writeText(filtered.map((a) => `${a.album_artist} — ${a.title}`).join('\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* sin permiso de portapapeles: no pasa nada */
-    }
+    if (!filtered.length) return;
+    const text = filtered.map((a) => `${a.album_artist} — ${a.title}`).join('\n');
+    const copied = await copyText(text);
+    setCopyResult({ albums: filtered, copied, text });
   };
 
   const detail = (a) => {
@@ -157,12 +156,30 @@ export default function QualityLists() {
             />
             <button
               onClick={copyAll}
-              className="shrink-0 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-ink-800 text-neutral-400 hover:bg-ink-850"
-              title="Copia «Artista — Álbum» de lo que se ve, una línea por álbum"
+              disabled={!filtered.length}
+              className="shrink-0 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-ink-800 text-neutral-400 hover:bg-ink-850 disabled:opacity-50"
+              title="Copia todos los resultados del filtro, una línea por álbum"
             >
-              <Copy size={13} /> {copied ? 'Copiado' : 'Copiar lista'}
+              <Copy size={13} /> Copiar lista
             </button>
           </div>
+          {result?.copied && (
+            <p role="status" className="mb-2 text-xs text-green-400">
+              {result.albums.length === 1 ? '1 álbum copiado' : `${result.albums.length.toLocaleString('es')} álbumes copiados`}
+            </p>
+          )}
+          {result && !result.copied && (
+            <label className="mb-2 block text-xs text-neutral-400">
+              El navegador bloqueó la copia automática. Selecciona el texto y cópialo con Ctrl+C o ⌘C.
+              <textarea
+                readOnly
+                value={result.text}
+                onFocus={(event) => event.currentTarget.select()}
+                rows={5}
+                className="mt-1 block w-full rounded-lg border border-ink-800 bg-ink-900 p-2"
+              />
+            </label>
+          )}
           <p className="text-xs text-neutral-600 mb-2">
             {filtered.length.toLocaleString('es')} {filtered.length === 1 ? 'álbum' : 'álbumes'}
             {q.trim() ? ` de ${list.length.toLocaleString('es')}` : ''}

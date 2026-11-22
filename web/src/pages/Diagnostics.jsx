@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Stethoscope, Copy, Check, RefreshCw } from 'lucide-react';
 import { api, fmtBytes } from '../api.js';
+import { copyText } from '../clipboard.js';
 import { PageTitle, Spinner, ErrorMsg, Button, StatCard } from '../components.jsx';
 
 // Diagnóstico: todo lo que antes había que leer por `docker logs`, en la interfaz.
@@ -38,17 +39,9 @@ export default function Diagnostics() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  // navigator.clipboard NO existe en HTTP (solo HTTPS/localhost), y el NAS se abre
-  // por http://IP. Por eso el copiado directo fallaba en silencio. Se intenta, y si
-  // no, execCommand con un textarea; y siempre se muestra el texto para copiar a mano.
-  const copy = () => {
-    const text = asText(d);
+  const copy = async () => {
     setShowText(true);
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(ok).catch(() => execCopy(text) && ok());
-    } else if (execCopy(text)) {
-      ok();
-    }
+    if (await copyText(asText(d))) ok();
   };
 
   const scan = d.scan || {};
@@ -261,24 +254,6 @@ export default function Diagnostics() {
       </div>
     </div>
   );
-}
-
-// Copiado alternativo para contextos no seguros (HTTP): textarea + execCommand.
-function execCopy(text) {
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    const okCmd = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return okCmd;
-  } catch {
-    return false;
-  }
 }
 
 const n = (x) => (x || 0).toLocaleString('es');
