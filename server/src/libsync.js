@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { db, getSetting, setSetting } from './db.js';
 import { splitRoots, isJunkEntry } from './libkey.js';
 import { runScan, scanStatus } from './scanner.js';
+import { matchKey } from './matchkey.js';
+import { isStudioAlbum } from './discography.js';
 import { regroupDiscs } from './discgroup.js';
 
 // Dos cosas que comparten fichero porque las dos cuelgan de «¿qué hay de verdad en mi
@@ -113,11 +116,11 @@ export function albumsWithoutCover() {
 
 // ───────────────────── 2. SINCRONIZACIÓN AUTOMÁTICA (poda) ─────────────────────
 
-// Si la poda va a quitar más de esta fracción de la biblioteca (y más de MIN_ABS álbumes),
+// Si la poda va a quitar más de esta fracción de la biblioteca (o más de MAX_COUNT álbumes),
 // se DETIENE y pide confirmación: borrar de golpe una cuarta parte de la colección casi
 // nunca es intencionado (lo normal es un montaje caído o una ruta cambiada).
 const MAX_FRACTION = 0.25;
-const MIN_ABS = 25;
+const MAX_COUNT = 25;
 
 export const syncStatus = {
   running: false,
@@ -153,13 +156,18 @@ function lastResult() {
   }
 }
 
-// Una raíz es fiable si existe, es una carpeta y NO está vacía. Una biblioteca de verdad
-// siempre tiene algo; una vacía suele ser un montaje de red que no ha subido.
-async function rootHealthy(root) {
+// Valida el montaje contra audio que ya figura en la biblioteca.
+async function rootHealthy(root, albums) {
   try {
     const st = await fs.promises.stat(root);
     if (!st.isDirectory()) return false;
-    return (await fs.promises.readdir(root)).length > 0;
+    // Una carpeta accesible puede ser el directorio vacío detrás de un montaje caído.
+    // Exige audio de la biblioteca conocida, aunque queden carpetas o archivos auxiliares.
+    for (let i = 0; i < albums.length; i += 32) {
+      const results = await Promise.all(albums.slice(i, i + 32).map((album) => albumGone(album, { verifyAudio: true })));
+      if (results.includes(false)) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -168,7 +176,7 @@ async function rootHealthy(root) {
 // ¿Ha desaparecido de verdad este álbum? true = sí · false = sigue ahí · null = no se sabe.
 // Solo ENOENT/ENOTDIR cuentan como «no existe»; un EACCES, un timeout de la red o un EIO NO
 // prueban nada, así que se deja el álbum como está.
-async function albumGone(a) {
+async function albumGone(a, { verifyAudio = false } = {}) {
   let st;
   try {
     st = await fs.promises.stat(a.path);
@@ -179,7 +187,7 @@ async function albumGone(a) {
   // La carpeta existe. Si no ha cambiado desde el último escaneo, su contenido es el que
   // la base ya conoce. Si cambió, el escáner la habrá releído SALVO que ya no quede audio
   // (una carpeta sin audio no se visita): ese es el único caso que hay que mirar aquí.
-  if (a.scanned_at && st.mtimeMs <= a.scanned_at) return false;
+  if (!verifyAudio && a.scanned_at && st.mtimeMs <= a.scanned_at) return false;
   let entries;
   try {
     entries = await fs.promises.readdir(a.path, { withFileTypes: true });
@@ -197,25 +205,31 @@ async function inBatches(items, size, fn) {
 }
 
 // Quita de la base los álbumes cuyos ficheros ya no están. Devuelve el resumen.
-export async function pruneMissingAlbums({ force = false } = {}) {
+export async function pruneMissingAlbums({ confirmation = null } = {}) {
   const out = { checked: 0, removed: 0, tracks: 0, sample: [], skippedRoots: [], unknown: 0, blocked: null };
   const roots = splitRoots(getSetting('music_dirs')).map((raw) => ({ raw, n: norm(raw) }));
   if (!roots.length) return out;
 
-  // Salvaguarda 1: solo se juzgan los álbumes de raíces que responden. Una raíz caída se
-  // salta ENTERA (y se avisa), nunca se interpreta como «todo borrado». `force` NO salta
-  // esto: si el montaje no está, no hay nada que decidir.
-  const healthy = [];
-  for (const r of roots) (await rootHealthy(r.raw)) ? healthy.push(r) : out.skippedRoots.push(r.raw);
-  if (!healthy.length) return out;
-  const inHealthyRoot = (p) => healthy.some((r) => p === r.n || p.startsWith(`${r.n}/`));
-
-  // Salvaguarda 2: un álbum cuya ruta NO cuelga de ninguna raíz actual (montaje antiguo, o
-  // music_dirs cambiado) no se toca: el escáner ya lo reubica por su identidad (local_key).
   const rows = db
     .prepare("SELECT id, path, title, album_artist, scanned_at FROM albums WHERE path IS NOT NULL AND path != ''")
     .all();
-  const candidates = rows.filter((a) => inHealthyRoot(norm(a.path)));
+  const byRoot = new Map(roots.map((root) => [root, []]));
+  for (const album of rows) {
+    const albumPath = norm(album.path);
+    const root = roots.find((r) => albumPath === r.n || albumPath.startsWith(`${r.n}/`));
+    if (root) byRoot.get(root).push(album);
+  }
+  const candidates = [];
+  const healthy = [];
+  for (const [root, albums] of byRoot) {
+    if (!albums.length) continue;
+    if (await rootHealthy(root.raw, albums)) {
+      healthy.push(albums);
+      candidates.push(...albums);
+    } else {
+      out.skippedRoots.push(root.raw);
+    }
+  }
   out.checked = candidates.length;
 
   const gone = [];
@@ -225,10 +239,24 @@ export async function pruneMissingAlbums({ force = false } = {}) {
     else if (v === null) out.unknown++;
   });
   if (!gone.length) return out;
+  const currentAlbum = db.prepare('SELECT path, scanned_at FROM albums WHERE id = ?');
+  if (scanStatus.running || gone.some((album) => {
+    const current = currentAlbum.get(album.id);
+    return !current || current.path !== album.path || current.scanned_at !== album.scanned_at;
+  })) {
+    throw new Error('La biblioteca cambió durante la comprobación. Vuelve a sincronizar.');
+  }
 
   // Salvaguarda 3: freno de mano ante una poda desproporcionada.
-  if (!force && gone.length > MIN_ABS && gone.length / candidates.length > MAX_FRACTION) {
+  const missing = new Set(gone.map((a) => a.id));
+  const token = createHash('sha256')
+    .update(JSON.stringify(gone.map(({ id, path }) => [id, path]).sort(([a], [b]) => a - b)))
+    .digest('hex');
+  const largeBatch = gone.length > MAX_COUNT ||
+    healthy.some((albums) => albums.filter((a) => missing.has(a.id)).length / albums.length > MAX_FRACTION);
+  if (largeBatch && confirmation !== token) {
     out.blocked = {
+      confirmation: token,
       count: gone.length,
       evaluated: candidates.length,
       sample: gone.slice(0, 10).map((a) => `${a.album_artist || '?'} — ${a.title || '?'}`),
@@ -245,19 +273,48 @@ export async function pruneMissingAlbums({ force = false } = {}) {
     db.prepare('DELETE FROM album_artists WHERE album_id = ?'),
     db.prepare('DELETE FROM albums WHERE id = ?'),
   ];
+  const affected = (table, column) => db.prepare(`SELECT * FROM ${table} WHERE ${column} = ?`);
+  const releases = affected('release_groups', 'owned_album_id');
+  const challenges = affected('challenge_items', 'owned_album_id');
+  const unlinkDownloads = db.prepare('UPDATE downloads SET album_id = NULL WHERE album_id = ?');
+  const linkRelease = db.prepare('UPDATE release_groups SET owned_album_id = ?, is_owned = ? WHERE rg_mbid = ? AND artist_id = ?');
+  const linkChallenge = db.prepare('UPDATE challenge_items SET owned_album_id = ? WHERE challenge_id = ? AND position = ?');
+  const artistAlbums = db.prepare(`SELECT id, title, rg_mbid FROM albums
+    WHERE match_state != 'dismissed' AND (artist_id = @id OR id IN (SELECT album_id FROM album_artists WHERE artist_id = @id))
+    ORDER BY id`);
+  const adjustStats = db.prepare('UPDATE artist_stats SET studio_owned = MAX(0, studio_owned - 1), missing = missing + 1 WHERE artist_id = ?');
+  const challengeCopies = new Map();
+  if (gone.some((a) => challenges.get(a.id))) {
+    for (const a of db.prepare(`SELECT a.id, a.album_artist, a.title, ar.name AS artist_name
+      FROM albums a LEFT JOIN artists ar ON ar.id = a.artist_id
+      WHERE a.match_state != 'dismissed' ORDER BY a.id`).iterate()) {
+      if (missing.has(a.id)) continue;
+      challengeCopies.set(matchKey(a.album_artist, a.title), a.id);
+      if (a.artist_name) challengeCopies.set(matchKey(a.artist_name, a.title), a.id);
+    }
+  }
   const dropBatch = db.transaction((batch) => {
     for (const a of batch) {
+      for (const rg of releases.all(a.id)) {
+        const copies = artistAlbums.all({ id: rg.artist_id }).filter((copy) => !missing.has(copy.id));
+        const replacement = copies.find((copy) => copy.rg_mbid === rg.rg_mbid) ??
+          copies.find((copy) => !copy.rg_mbid && matchKey('', copy.title) === matchKey('', rg.title));
+        linkRelease.run(replacement?.id ?? null, replacement ? 1 : 0, rg.rg_mbid, rg.artist_id);
+        if (!replacement && rg.is_owned && !rg.is_upcoming && isStudioAlbum(rg.primary_type, JSON.parse(rg.secondary_types || '[]'))) {
+          adjustStats.run(rg.artist_id);
+        }
+      }
+      for (const item of challenges.all(a.id)) {
+        linkChallenge.run(challengeCopies.get(matchKey(item.artist, item.album)) ?? null, item.challenge_id, item.position);
+      }
+      unlinkDownloads.run(a.id);
       out.tracks += countTracks.get(a.id).n;
       for (const st of steps) st.run(a.id);
       out.removed++;
     }
   });
-  // por tandas pequeñas: better-sqlite3 es síncrono y una transacción enorme dejaría la
-  // web sin responder; entre tandas se cede el turno al bucle de eventos.
-  for (let i = 0; i < gone.length; i += 100) {
-    dropBatch(gone.slice(i, i + 100));
-    await new Promise((r) => setImmediate(r));
-  }
+  // Mantiene las referencias y los álbumes consistentes en una sola transacción.
+  dropBatch(gone);
   out.sample = gone.slice(0, 10).map((a) => `${a.album_artist || '?'} — ${a.title || '?'}`);
 
   // una caja multidisco a la que se le ha ido un disco tiene que reagruparse
@@ -271,7 +328,7 @@ export async function pruneMissingAlbums({ force = false } = {}) {
 
 // El ciclo completo: escanear (incremental) y después podar. `scan:false` solo poda
 // (lo usa «Eliminar igualmente», que ya viene de un escaneo reciente).
-export async function runAutoSync({ force = false, scan = true, trigger = 'manual' } = {}) {
+export async function runAutoSync({ confirmation = null, scan = true, trigger = 'manual' } = {}) {
   if (syncStatus.running) return syncStatus;
   Object.assign(syncStatus, {
     running: true,
@@ -296,8 +353,8 @@ export async function runAutoSync({ force = false, scan = true, trigger = 'manua
     syncStatus.phase = 'pruning';
     // si hay un escaneo en marcha (el de otro proceso: botón, refresco nocturno) no se poda
     // a la vez; el siguiente ciclo lo hará.
-    if (!scanStatus.running) {
-      const r = await pruneMissingAlbums({ force });
+    if (!scanStatus.running && !syncStatus.scanError) {
+      const r = await pruneMissingAlbums({ confirmation });
       Object.assign(syncStatus, {
         checked: r.checked,
         removed: r.removed,
@@ -307,7 +364,7 @@ export async function runAutoSync({ force = false, scan = true, trigger = 'manua
         blocked: r.blocked,
       });
       if (r.removed)
-        console.log(`[autosync] poda: ${r.removed} álbumes (${r.tracks} pistas) ya no están en disco${force ? ' (confirmado)' : ''}`);
+        console.log(`[autosync] poda: ${r.removed} álbumes (${r.tracks} pistas) ya no están en disco${confirmation ? ' (confirmado)' : ''}`);
       if (r.blocked)
         console.warn(`[autosync] poda DETENIDA por seguridad: ${r.blocked.count} de ${r.blocked.evaluated} álbumes parecen desaparecidos`);
       if (r.skippedRoots.length) console.warn(`[autosync] raíz sin responder, se omite: ${r.skippedRoots.join(', ')}`);
@@ -400,7 +457,7 @@ export function registerLibrarySync(app, { busy = () => false } = {}) {
   // UI sigue el progreso sondeando /api/autosync.
   app.post('/api/autosync/run', async (req) => {
     const b = req.body || {};
-    runAutoSync({ force: b.force === true, scan: b.scan !== false, trigger: 'manual' }).catch((e) =>
+    runAutoSync({ confirmation: b.confirmation, scan: b.scan !== false, trigger: 'manual' }).catch((e) =>
       console.warn('[autosync] ciclo manual falló:', String(e.message || e))
     );
     return { started: true, status: syncStatus };

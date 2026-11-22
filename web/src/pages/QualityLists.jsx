@@ -33,6 +33,8 @@ const PAGE = 200; // filas por «mostrar más»: miles de enlaces de golpe harí
 export default function QualityLists() {
   const [summary, setSummary] = useState(null);
   const [err, setErr] = useState(null);
+  const [listError, setListError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const [tab, setTab] = useState('rate:44100');
   const [list, setList] = useState(null); // null = cargando
   const [q, setQ] = useState('');
@@ -73,16 +75,17 @@ export default function QualityLists() {
     if (!current) return undefined;
     let alive = true;
     setList(null);
+    setListError(null);
     setQ('');
     setLimit(PAGE);
     const qs = `kind=${current.kind}${current.rate ? `&rate=${current.rate}` : ''}`;
     getJson(`/quality/list?${qs}`)
       .then((r) => alive && setList(r.albums))
-      .catch((e) => alive && setErr(e.message));
+      .catch((e) => alive && setListError(e.message));
     return () => {
       alive = false;
     };
-  }, [current?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current?.key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     if (!list) return [];
@@ -127,7 +130,12 @@ export default function QualityLists() {
         {tabs.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+                if (t.key === tab) return;
+                setList(null);
+                setListError(null);
+                setTab(t.key);
+              }}
             className={`text-sm px-3 py-1.5 rounded-lg border transition ${
               tab === t.key
                 ? 'border-gold-500/40 bg-gold-500/15 text-gold-300'
@@ -148,7 +156,12 @@ export default function QualityLists() {
         <p className="text-xs text-neutral-600 mb-3">Álbumes con alguna pista sin etiqueta ReplayGain (volumen sin normalizar).</p>
       )}
 
-      {!list ? (
+      {listError ? (
+        <div className="text-sm text-red-400">
+          <p>{listError}</p>
+          <button className="mt-2 underline" onClick={() => setAttempt((n) => n + 1)}>Reintentar</button>
+        </div>
+      ) : !list ? (
         <Spinner />
       ) : list.length === 0 ? (
         <p className="text-neutral-600 text-sm">Ninguno. Nada que mostrar en esta lista.</p>
@@ -317,7 +330,7 @@ export function AutoSyncCard() {
           {last.removed > 0
             ? `${last.removed.toLocaleString('es')} ${last.removed === 1 ? 'álbum quitado' : 'álbumes quitados'} de la base (${last.removedTracks.toLocaleString('es')} pistas)`
             : 'nada que quitar'}
-          {last.error ? ` · error: ${last.error}` : ''}
+          {last.error || last.scanError ? ` · error: ${last.error || last.scanError}` : ''}
         </p>
       )}
       {!last && <p className="text-xs text-neutral-600 mt-3">Todavía no se ha hecho ninguna pasada.</p>}
@@ -358,7 +371,7 @@ export function AutoSyncCard() {
               <button
                 onClick={() => {
                   if (window.confirm(`¿Quitar de la base de datos ${last.blocked.count} álbumes que ya no están en disco? (No se borra ningún fichero.)`))
-                    run({ force: true, scan: false });
+                    run({ confirmation: last.blocked.confirmation, scan: false });
                 }}
                 className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-amber-500/50 text-amber-200 hover:bg-amber-500/20"
               >

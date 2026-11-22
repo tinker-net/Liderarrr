@@ -35,21 +35,20 @@ const monthsAgoIso = (n) => iso(new Date(Date.now() - n * 30 * 86400000));
 // Normaliza y deduplica los eventos de todas las fuentes. Un mismo disco puede venir de
 // varias fuentes: se funde en uno solo (mayor prioridad manda la fecha; se acumulan las
 // «kinds» para pintar varios puntitos).
-function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, descubre }) {
+function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, descubre }, enabled, srcOff) {
   const byKey = new Map();
   const add = (date, artist, title, kind, extra = {}) => {
     const d = (date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !artist || !title) return;
     const key = `${nkey(artist)}::${nkey(title)}`;
     const src = kindSource(kind, extra);
+    if (!enabled[kind] || srcOff?.has(src)) return;
     const cur = byKey.get(key);
     if (!cur) {
-      byKey.set(key, { date: d, artist, title, kinds: [kind], ksrc: { [kind]: [src] }, ...extra });
+      byKey.set(key, { date: d, artist, title, kinds: [kind], ...extra });
       return;
     }
     if (!cur.kinds.includes(kind)) cur.kinds.push(kind);
-    const srcs = (cur.ksrc[kind] ||= []);
-    if (!srcs.includes(src)) srcs.push(src);
     // completa metadatos que falten (rg_mbid, artist_id, url…), sin pisar los existentes
     for (const [k, v] of Object.entries(extra)) if (cur[k] == null && v != null) cur[k] = v;
   };
@@ -108,7 +107,7 @@ export default function MonthCalendar({ onSearch, srcOff }) {
       api.globalReleases(45, false, false).catch(() => []), // descubrimiento por afinidad
     ])
       .then(([upcoming, recent, labels, radar, novedades, singles, descubre]) =>
-        setEvents(mergeEvents({ upcoming, recent, labels, radar, novedades, singles, descubre }))
+        setEvents({ upcoming, recent, labels, radar, novedades, singles, descubre })
       )
       .catch((e) => setErr(e.message));
   }, []);
@@ -117,11 +116,8 @@ export default function MonthCalendar({ onSearch, srcOff }) {
   // fuentes se ve si AL MENOS una está activada; sus puntitos reflejan las activadas.
   const byDay = useMemo(() => {
     const m = {};
-    for (const e of events || []) {
-      const kinds = e.kinds.filter((k) => enabled[k] && (e.ksrc[k] || []).some((s) => !srcOff?.has(s)));
-      if (!kinds.length) continue;
-      const primary = KIND_ORDER.find((k) => kinds.includes(k)) || kinds[0];
-      (m[e.date] ||= []).push({ ...e, kinds, primary });
+    for (const event of events ? mergeEvents(events, enabled, srcOff) : []) {
+      (m[event.date] ||= []).push(event);
     }
     for (const k of Object.keys(m)) m[k].sort((a, b) => KIND_ORDER.indexOf(a.primary) - KIND_ORDER.indexOf(b.primary));
     return m;
