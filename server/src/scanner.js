@@ -306,7 +306,7 @@ const fixAlbumPath = db.prepare('UPDATE albums SET path = ? WHERE id = ?');
 // TODO (ignora el salto incremental).
 export async function runScan(opts = {}) {
   if (scanStatus.running) return scanStatus;
-  const { roots: rootsArg, force = false } = typeof opts === 'string' ? { roots: opts } : opts;
+  const { roots: rootsArg, force = false, changedDirs } = typeof opts === 'string' ? { roots: opts } : opts;
   const roots = (rootsArg || getSetting('music_dirs') || '')
     .split(/[\n;]+/)
     .map((s) => s.trim())
@@ -333,7 +333,7 @@ export async function runScan(opts = {}) {
   const handleFolder = async (folder) => {
     scanStatus.foldersFound++;
     scanStatus.current = folder.dir;
-    if (!force) {
+    if (!force && !changedDirs?.has(path.resolve(folder.dir))) {
       const existing = scannedAtOf.get(albumKey(folder.dir, keyRoots));
       if (existing?.scanned_at) {
         let mtime = 0;

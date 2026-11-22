@@ -1,5 +1,6 @@
 import { getSetting, setSetting } from './db.js';
 import { runScan, scanStatus } from './scanner.js';
+import { autoSyncConfig, runAutoSync } from './libsync.js';
 import { runIdentify, identifyStatus } from './identify.js';
 import { lidarrSync } from './lidarr.js';
 import { enrichAllDiscographies, discographyStatus } from './discography.js';
@@ -78,12 +79,22 @@ function buildSteps() {
     },
     {
       key: 'scan',
-      label: 'Escanear la biblioteca del disco',
+      label: 'Escanear y sincronizar la biblioteca',
       enabled: () => !!getSetting('music_dirs'),
       run: async () => {
-        const r = await runScan();
-        if (r.error) throw new Error(r.error);
-        return `${scanStatus.albumsDone} álbumes · ${scanStatus.tracksDone} pistas`;
+        const trigger = refreshStatus.trigger === 'nightly' ? 'nightly' : 'manual';
+        if (trigger === 'nightly' && !autoSyncConfig().enabled) {
+          const scan = await runScan();
+          if (scan.error) throw new Error(scan.error);
+          return `${scan.albumsDone} álbumes leídos · ${scan.tracksDone} pistas`;
+        }
+        const r = await runAutoSync({ trigger });
+        if (r.error || r.scanError) throw new Error(r.error || r.scanError);
+        const summary = [`${scanStatus.albumsDone} álbumes leídos`, `${scanStatus.tracksDone} pistas`];
+        if (r.removed) summary.push(`${r.removed} fichas retiradas`);
+        if (r.blocked) summary.push(`${r.blocked.count} bajas pendientes de confirmar en Calidad y disco`);
+        if (r.skippedRoots.length) summary.push(`${r.skippedRoots.length} carpetas omitidas`);
+        return summary.join(' · ');
       },
     },
     {

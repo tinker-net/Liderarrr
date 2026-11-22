@@ -328,8 +328,17 @@ export async function pruneMissingAlbums({ confirmation = null } = {}) {
 
 // El ciclo completo: escanear (incremental) y después podar. `scan:false` solo poda
 // (lo usa «Eliminar igualmente», que ya viene de un escaneo reciente).
-export async function runAutoSync({ confirmation = null, scan = true, trigger = 'manual' } = {}) {
-  if (syncStatus.running) return syncStatus;
+let activeSync = null;
+
+export function runAutoSync(options = {}) {
+  if (activeSync) return activeSync;
+  activeSync = performAutoSync(options).finally(() => {
+    activeSync = null;
+  });
+  return activeSync;
+}
+
+async function performAutoSync({ confirmation = null, scan = true, trigger = 'manual', changedDirs } = {}) {
   Object.assign(syncStatus, {
     running: true,
     phase: scan ? 'scanning' : 'pruning',
@@ -347,7 +356,7 @@ export async function runAutoSync({ confirmation = null, scan = true, trigger = 
   });
   try {
     if (scan && !scanStatus.running) {
-      await runScan(); // incremental: solo relee las carpetas que cambiaron
+      await runScan({ changedDirs });
       syncStatus.scanError = scanStatus.error || null;
     }
     syncStatus.phase = 'pruning';
@@ -398,33 +407,84 @@ export async function runAutoSync({ confirmation = null, scan = true, trigger = 
   return syncStatus;
 }
 
-// Temporizador fijo (setInterval cada minuto) en vez de un setTimeout encadenado: si un
-// ciclo tarda mucho o falla, el reloj NO se para (lección de scheduleAutoImport en index.js).
-// Relee los ajustes en cada vuelta, así que cambiarlos aplica sin reiniciar.
-let schedulerStarted = false;
-function startScheduler(busy) {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  // el primer ciclo, 10 min después de arrancar: que no compita con el arranque
-  // (regroupDiscs, limpieza de ocultos, reanudar la cola de Lidarr…).
-  let nextAt = Date.now() + 10 * 60 * 1000;
-  setInterval(() => {
-    const cfg = autoSyncConfig();
-    if (!cfg.enabled || syncStatus.running || Date.now() < nextAt) return;
-    if (scanStatus.running || busy()) return; // no pisar un escaneo/refresco/importación en curso
-    runAutoSync({ trigger: 'auto' })
-      .catch((e) => console.warn('[autosync] ciclo falló:', String(e.message || e)))
-      .finally(() => {
-        nextAt = Date.now() + autoSyncConfig().intervalMin * 60 * 1000;
-      });
-  }, 60 * 1000).unref();
+// Agrupa ráfagas de cambios y conserva el escaneo periódico para montajes que
+// no propagan al contenedor los cambios hechos desde otra máquina.
+export function startLibraryWatcher({ busy = () => false, settleMs = 5000 } = {}) {
+  const watchers = new Map();
+  let pending = new Set();
+  let pendingSince = 0;
+  let dueAt = 0;
+  let timer;
+  const startedAt = Date.now();
+
+  function tick() {
+    clearTimeout(timer);
+    const config = autoSyncConfig();
+    const roots = new Set(config.enabled ? splitRoots(getSetting('music_dirs')) : []);
+    for (const [root, watcher] of watchers) {
+      if (roots.has(root)) continue;
+      watcher.close();
+      watchers.delete(root);
+    }
+    if (!roots.size) {
+      pending.clear();
+      pendingSince = 0;
+      return;
+    }
+    for (const root of roots) {
+      if (watchers.has(root)) continue;
+      try {
+        const watcher = fs.watch(root, { recursive: true, persistent: false }, (event, filename) => {
+          if (event === 'change' && filename && !AUDIO_EXT.has(path.extname(filename).toLowerCase())) return;
+          pending.add(filename ? path.dirname(path.resolve(root, filename)) : path.resolve(root));
+          pendingSince ||= Date.now();
+          dueAt = Math.min(Date.now() + settleMs, pendingSince + 60_000);
+          clearTimeout(timer);
+          timer = setTimeout(tick, Math.max(0, dueAt - Date.now())).unref();
+        });
+        watchers.set(root, watcher);
+        watcher.on('close', () => {
+          if (watchers.get(root) === watcher) watchers.delete(root);
+        });
+        watcher.on('error', () => watcher.close());
+      } catch {
+        // Ruta todavía sin montar o un sistema sin vigilancia. Se reintenta en el siguiente tick.
+      }
+    }
+
+    const periodicDue = config.lastRun
+      ? Date.now() >= config.lastRun + config.intervalMin * 60_000
+      : Date.now() >= startedAt + 10 * 60_000;
+    if (pending.size && Date.now() < dueAt) {
+      timer = setTimeout(tick, dueAt - Date.now()).unref();
+      return;
+    }
+    if (!pending.size && !periodicDue) return;
+    if (syncStatus.running || scanStatus.running || busy()) {
+      timer = setTimeout(tick, settleMs).unref();
+      return;
+    }
+
+    const changedDirs = pending;
+    pending = new Set();
+    pendingSince = 0;
+    runAutoSync({ trigger: changedDirs.size ? 'watch' : 'auto', changedDirs })
+      .catch((e) => console.warn('[autosync] ciclo falló:', String(e.message || e)));
+  }
+
+  const polling = setInterval(tick, 60_000).unref();
+  tick();
+  return () => {
+    clearInterval(polling);
+    clearTimeout(timer);
+    for (const watcher of watchers.values()) watcher.close();
+    watchers.clear();
+  };
 }
 
 // ─────────────────────────────────── rutas ───────────────────────────────────
 
-// Se llama UNA vez desde index.js, con la instancia de Fastify. Registra las rutas nuevas
-// y arranca el temporizador; no toca ninguna ruta existente.
-export function registerLibrarySync(app, { busy = () => false } = {}) {
+export function registerLibrarySync(app) {
   app.get('/api/quality/lists', async () => qualityListsSummary());
 
   app.get('/api/quality/list', async (req, reply) => {
@@ -463,5 +523,4 @@ export function registerLibrarySync(app, { busy = () => false } = {}) {
     return { started: true, status: syncStatus };
   });
 
-  startScheduler(busy);
 }

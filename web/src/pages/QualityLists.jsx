@@ -249,8 +249,7 @@ export function AutoSyncCard() {
 
   const running = !!info?.status?.running;
   useEffect(() => {
-    if (!running) return undefined;
-    const t = setInterval(load, 2000);
+    const t = setInterval(load, running ? 2000 : 10_000);
     return () => clearInterval(t);
   }, [running, load]);
 
@@ -284,7 +283,7 @@ export function AutoSyncCard() {
         <div className="min-w-0">
           <h2 className="text-sm text-neutral-400">Sincronización automática</h2>
           <p className="text-xs text-neutral-600 mt-0.5">
-            Escanea la biblioteca y quita de la base los álbumes cuyos ficheros ya no están en disco. No borra ningún fichero.
+            Detecta cambios en las carpetas de música y actualiza la biblioteca. El intervalo se usa como comprobación de respaldo.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -326,7 +325,7 @@ export function AutoSyncCard() {
 
       {last && !running && (
         <p className="text-xs text-neutral-500 mt-3">
-          Última pasada: {fmtDate(last.at)} ({last.trigger === 'auto' ? 'automática' : 'manual'}) ·{' '}
+          Última pasada: {fmtDate(last.at)} ({last.trigger === 'watch' ? 'cambio en disco' : last.trigger === 'nightly' ? 'nocturna' : last.trigger === 'auto' ? 'automática' : 'manual'}) ·{' '}
           {last.removed > 0
             ? `${last.removed.toLocaleString('es')} ${last.removed === 1 ? 'álbum quitado' : 'álbumes quitados'} de la base (${last.removedTracks.toLocaleString('es')} pistas)`
             : 'nada que quitar'}
