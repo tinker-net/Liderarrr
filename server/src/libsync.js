@@ -360,7 +360,7 @@ function startScheduler(busy) {
       .finally(() => {
         nextAt = Date.now() + autoSyncConfig().intervalMin * 60 * 1000;
       });
-  }, 60 * 1000);
+  }, 60 * 1000).unref();
 }
 
 // ─────────────────────────────────── rutas ───────────────────────────────────

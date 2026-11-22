@@ -7,7 +7,7 @@ name: Construir y publicar imagen Docker
 # «docker compose pull»—, la suite es la puerta: si falla, no se publica nada.
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, ChatGPT]
     tags: ['v*']
   workflow_dispatch:
 
@@ -67,6 +67,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=chatgpt,enable=${{ github.ref == 'refs/heads/ChatGPT' }}
             type=semver,pattern={{version}}
             type=sha,format=short
 
