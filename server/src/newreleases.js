@@ -306,9 +306,6 @@ export function externalNewReleases({ limit = 200, includeOwned = false } = {}) 
   return db
     .prepare(
       `SELECT e.id, e.source, e.artist_id, e.artist, e.title, e.release_date, e.record_type, e.cover, e.url, e.ahead,
-        (SELECT MIN(rg.first_release) FROM release_groups rg
-          WHERE rg.artist_id = e.artist_id AND rg.title = e.title COLLATE NOCASE
-          HAVING COUNT(DISTINCT rg.rg_mbid) = 1) AS first_release,
         (SELECT 1 FROM tracked_artists ta WHERE ta.artist_id = e.artist_id) AS tracked
        FROM external_releases e
        WHERE e.dismissed = 0 AND e.record_type != 'single'
@@ -328,9 +325,6 @@ export function externalNewSongs({ days = 7, includeOwned = false, limit = 300 }
   return db
     .prepare(
       `SELECT e.id, e.source, e.artist_id, e.artist, e.title, e.release_date, e.record_type, e.cover, e.url, e.ahead,
-        (SELECT MIN(rg.first_release) FROM release_groups rg
-          WHERE rg.artist_id = e.artist_id AND rg.title = e.title COLLATE NOCASE
-          HAVING COUNT(DISTINCT rg.rg_mbid) = 1) AS first_release,
         (SELECT 1 FROM tracked_artists ta WHERE ta.artist_id = e.artist_id) AS tracked
        FROM external_releases e
        WHERE e.dismissed = 0 AND e.record_type = 'single' AND e.release_date >= @since

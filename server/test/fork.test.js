@@ -57,7 +57,7 @@ alb.run(7, 'g', '/m/Harmonia/Deluxe', 'Harmonia', 'Deluxe', 1975, '/m/h.jpg', 'm
 pista.run(7, 'uno', '/7a', 96000, null, 'MP3', 0, 1);
 
 test('los listados cuentan ÁLBUMES por lo que importa, y lo descartado no sale', () => {
-  assert.deepEqual(qualityListsSummary(), { hiRes: 2, belowCd: 1, mixed: 1, noReplaygain: 2, noCover: 2 });
+  assert.deepEqual(qualityListsSummary(), { standardLossless: 1, hiRes: 2, belowCd: 1, mixed: 1, noReplaygain: 2, noCover: 2 });
 });
 
 test('alta resolución es más de 16 bits O más de 48 kHz, y solo si no tiene pérdida', () => {
@@ -100,6 +100,8 @@ test('por HTTP: los listados contestan y una lista que no existe lo dice', async
   const resumen = await app.inject({ method: 'GET', url: '/api/quality/lists' });
   assert.equal(resumen.statusCode, 200);
   assert.equal(resumen.json().noCover, 2);
+  const standard = await app.inject('/api/quality/list?kind=lossless');
+  assert.deepEqual(standard.json().albums.map(a => a.title), ['Tago Mago']);
   const lista = await app.inject({ method: 'GET', url: '/api/quality/list?kind=hires' });
   assert.equal(lista.json().total, 2);
   // la lista por frecuencia exacta ya no existe: una pestaña por cada una no decía nada
@@ -108,17 +110,4 @@ test('por HTTP: los listados contestan y una lista que no existe lo dice', async
   const mala = await app.inject({ method: 'GET', url: '/api/quality/list?kind=inventada' });
   assert.equal(mala.statusCode, 400);
   assert.match(mala.json().error, /desconocida/);
-});
-
-test('Toda la biblioteca incluye CD y álbumes sin pistas y cuenta cada disco una vez', async () => {
-  alb.run(8, 'h', '/m/Pendiente', 'X', 'Pendiente', 2000, null, 'matched', 0);
-  try {
-    const {albums} = (await app.inject('/api/quality/list?kind=all')).json();
-    assert.equal(albums.length, (await app.inject('/api/quality/lists')).json().total);
-    assert.deepEqual(albums.filter(a => a.rates.includes(44100)).map(a => a.id).sort(), [1,2,5]);
-    assert.deepEqual(albums.find(a => a.id === 8).rates, []);
-    assert.ok(!albums.some(a => a.id === 4));
-  } finally {
-    db.prepare('DELETE FROM albums WHERE id=8').run();
-  }
 });

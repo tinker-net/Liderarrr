@@ -23,8 +23,8 @@ const calidad = (a) => {
 };
 
 const LISTAS = [
-  { key: 'all', label: 'Toda la biblioteca', cuenta: (s) => s.total,
-    nota: 'Cada álbum cuenta una vez en cada frecuencia que contiene. Un disco con pistas a 44,1 y 48 kHz aparece en ambas.' },
+  { key: 'lossless', label: 'Álbumes sin pérdida', cuenta: (s) => s.standardLossless,
+    nota: 'Todas las pistas sin pérdida, hasta 16 bits y a una misma frecuencia entre 44,1 y 48 kHz. Incluye los discos en calidad CD.' },
   {
     key: 'hires',
     label: 'Alta resolución',
@@ -62,7 +62,7 @@ export default function QualityLists() {
   const [err, setErr] = useState(null);
   const [listError, setListError] = useState(null);
   const [attempt, setAttempt] = useState(0);
-  const [tab, setTab] = useState('all');
+  const [tab, setTab] = useState('hires');
   const [list, setList] = useState(null); // null = cargando
   const [q, setQ] = useState('');
   const [rate, setRate] = useState(null); // filtro por frecuencia dentro de la lista (null = todas)
@@ -100,7 +100,7 @@ export default function QualityLists() {
   const frecuencias = useMemo(() => {
     if (!list || !list[0]?.rates) return [];
     const n = new Map();
-    for (const a of list) for (const hz of (a.rates.length ? a.rates : [0])) n.set(hz, (n.get(hz) || 0) + 1);
+    for (const a of list) for (const hz of a.rates) n.set(hz, (n.get(hz) || 0) + 1);
     return [...n.entries()].sort((x, y) => x[0] - y[0]).map(([hz, albums]) => ({ hz, albums }));
   }, [list]);
 
@@ -109,7 +109,7 @@ export default function QualityLists() {
     const needle = q.trim().toLowerCase();
     return list.filter(
       (a) =>
-        (rate == null || (rate === 0 ? !a.rates?.length : a.rates?.includes(rate))) &&
+        (rate == null || a.rates?.includes(rate)) &&
         (!needle || `${a.album_artist} ${a.title} ${a.path || ''}`.toLowerCase().includes(needle))
     );
   }, [list, q, rate]);
@@ -123,8 +123,7 @@ export default function QualityLists() {
   };
 
   const detail = (a) => {
-    if (tab === 'all') return <span className="text-neutral-500">{[a.formats.join(' / '), a.bits.map(b => b + ' bits').join(' / '), a.rates.map(fmtRate).join(' + ') || 'Sin frecuencia conocida'].filter(Boolean).join(' · ')}</span>;
-    if (tab === 'hires') return <span className="text-neutral-500">{calidad(a)}</span>;
+    if (tab === 'hires' || tab === 'lossless') return <span className="text-neutral-500">{calidad(a)}</span>;
     if (tab === 'belowcd')
       return (
         <span className="text-amber-400">
@@ -174,9 +173,9 @@ export default function QualityLists() {
         <p className="text-neutral-500 text-sm">Ninguno. Nada que mostrar en esta lista.</p>
       ) : (
         <>
-          {frecuencias.length > 0 && (
+          {frecuencias.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              <span className="text-xs text-neutral-500 mr-1">Frecuencia · {current.label}</span>
+              <span className="text-xs text-neutral-500 mr-1">Frecuencia:</span>
               <button
                 type="button"
                 onClick={() => {
@@ -199,7 +198,7 @@ export default function QualityLists() {
                   aria-pressed={rate === f.hz}
                   className={chip(rate === f.hz, true)}
                 >
-                  {f.hz ? fmtRate(f.hz) : 'Sin frecuencia conocida'} <span className="text-neutral-500">· {miles(f.albums)}</span>
+                  {fmtRate(f.hz)} <span className="text-neutral-500">· {miles(f.albums)}</span>
                 </button>
               ))}
             </div>

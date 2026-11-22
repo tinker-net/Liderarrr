@@ -110,9 +110,6 @@ export const api = {
 
   incomplete: () => req('/incomplete'),
   quality: () => req('/quality/overview'),
-  librarySyncStatus: () => req('/autosync'),
-  confirmMissingAlbums: (confirmation) =>
-    req('/autosync/run', { method: 'POST', body: { confirmation } }),
   duplicates: () => req('/quality/duplicates'),
   unidentified: () => req('/unidentified'),
   rarities: () => req('/rarities'),

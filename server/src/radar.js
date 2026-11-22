@@ -75,7 +75,7 @@ function ingest(curatorId, lists, source = 'buymusicclub') {
           artist: it.artist || null,
           title: it.title || it.releaseTitle || null,
           label: it.label || null,
-          release_date: day(it.releaseDate),
+          release_date: day(it.releaseDate) || day(l.published_at),
           url: it.url || null,
           image: it.image || null,
           type: it.type || null,
@@ -224,11 +224,9 @@ export function radarFeed({ since = null, unownedOnly = false } = {}) {
   const idx = libraryIndex();
   const rows = db
     .prepare(
-      `SELECT ri.*, c.name AS curator, c.username AS curator_username,
-         (SELECT MIN(rg.first_release) FROM release_groups rg
-          WHERE rg.rg_mbid = ri.rg_mbid AND rg.first_release != '') AS original_date
+      `SELECT ri.*, c.name AS curator, c.username AS curator_username
        FROM radar_items ri JOIN curators c ON c.id = ri.curator_id
-       WHERE ri.dismissed = 0 AND (ri.release_date >= @cutoff OR ri.list_date >= @cutoff)
+       WHERE ri.dismissed = 0 AND ri.release_date IS NOT NULL AND ri.release_date >= @cutoff
        ORDER BY ri.release_date DESC, ri.artist COLLATE NOCASE`
     )
     .all({ cutoff });
@@ -248,8 +246,6 @@ export function radarFeed({ since = null, unownedOnly = false } = {}) {
       title: r.title,
       label: r.label,
       release_date: r.release_date,
-      // Las filas antiguas podían usar la fecha de publicación de la lista como lanzamiento.
-      first_release: r.release_date !== r.list_date || r.original_date === r.release_date ? r.original_date : null,
       url: r.url,
       image: r.image,
       type: r.type,

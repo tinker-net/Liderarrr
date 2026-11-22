@@ -23,6 +23,8 @@ const LIVE = "a.match_state != 'dismissed'"; // mismo criterio «descriptivo» q
 const ORDER = 'ORDER BY a.album_artist COLLATE NOCASE, a.year, a.title COLLATE NOCASE';
 
 const ES_ALTA = 't.lossless = 1 AND (t.sample_rate > 48000 OR t.bit_depth > 16)';
+const SIN_PERDIDA_ESTANDAR = `MIN(CASE WHEN t.lossless = 1 AND t.bit_depth BETWEEN 1 AND 16
+  AND t.sample_rate BETWEEN 44100 AND 48000 THEN 1 ELSE 0 END) = 1 AND COUNT(DISTINCT t.sample_rate) = 1`;
 const ES_BAJA = 't.sample_rate < 44100';
 
 // Contadores de las pestañas: cuántos ÁLBUMES (no pistas) hay en cada lista. De una sola
@@ -30,10 +32,10 @@ const ES_BAJA = 't.sample_rate < 44100';
 export function qualityListsSummary() {
   const r = db
     .prepare(
-      `SELECT COALESCE(SUM(alta), 0) AS hiRes, COALESCE(SUM(baja), 0) AS belowCd,
+      `SELECT COALESCE(SUM(estandar), 0) AS standardLossless, COALESCE(SUM(alta), 0) AS hiRes, COALESCE(SUM(baja), 0) AS belowCd,
               COALESCE(SUM(mezcla), 0) AS mixed, COALESCE(SUM(sinrg), 0) AS noReplaygain
        FROM (
-         SELECT MAX(CASE WHEN ${ES_ALTA} THEN 1 ELSE 0 END) AS alta,
+         SELECT (${SIN_PERDIDA_ESTANDAR}) AS estandar, MAX(CASE WHEN ${ES_ALTA} THEN 1 ELSE 0 END) AS alta,
                 MAX(CASE WHEN ${ES_BAJA} THEN 1 ELSE 0 END) AS baja,
                 CASE WHEN COUNT(DISTINCT t.sample_rate) > 1 THEN 1 ELSE 0 END AS mezcla,
                 MAX(CASE WHEN t.has_replaygain = 0 THEN 1 ELSE 0 END) AS sinrg
@@ -64,7 +66,7 @@ function albumesCon(having) {
               GROUP_CONCAT(DISTINCT t.sample_rate) AS rates,
               GROUP_CONCAT(DISTINCT t.bit_depth) AS bits,
               GROUP_CONCAT(DISTINCT t.format) AS formats
-       FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
+       FROM albums a JOIN tracks t ON t.album_id = a.id
        WHERE ${LIVE}
        GROUP BY a.id HAVING ${having} ${ORDER}`
     )
@@ -107,7 +109,7 @@ export function albumsWithoutCover() {
 }
 
 const LISTAS = {
-  all: () => albumesCon('1'),
+  lossless: () => albumesCon(SIN_PERDIDA_ESTANDAR),
   hires: albumsHiRes,
   belowcd: albumsBelowCd,
   mixed: albumsMixedRates,
@@ -116,10 +118,7 @@ const LISTAS = {
 };
 
 export function registerQualityLists(app) {
-  app.get('/api/quality/lists', async () => ({
-    ...qualityListsSummary(),
-    total: db.prepare(`SELECT COUNT(*) AS n FROM albums a WHERE ${LIVE}`).get().n,
-  }));
+  app.get('/api/quality/lists', async () => qualityListsSummary());
   app.get('/api/quality/list', async (req, reply) => {
     const kind = String(req.query?.kind || '');
     if (!Object.hasOwn(LISTAS, kind)) return reply.code(400).send({ error: 'Lista desconocida' });

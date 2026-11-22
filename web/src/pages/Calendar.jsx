@@ -1,11 +1,10 @@
-import { formats, editions, matchesRelease } from '../releaseFilters.js';
+import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff, rowSource } from '../sources.js';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarClock, Plus, Check, Loader2, ExternalLink, Search, Star, Tag, X, RefreshCw, Radio, Heart, ChevronDown, ChevronRight } from 'lucide-react';
 import { api, pollLidarrQueue } from '../api.js';
 import { PageTitle, Spinner, ErrorMsg, SearchModal, QuickSearch, AddToChallengeButton, WantButton, useLidarrEnabled } from '../components.jsx';
 import MonthCalendar from './MonthCalendar.jsx';
-import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff, rowSource } from '../sources.js';
 import { aviso } from '../avisos.jsx';
 
 // Lanzamientos: cuatro vistas. «Próximos» (release groups por estrenar de tus artistas),
@@ -1046,9 +1045,6 @@ export default function Calendar() {
     since: /^\d{4}-\d{2}-\d{2}$/.test(p.get('since') || '') ? p.get('since') : thisYearStart(),
   });
   const [view, setView] = useState(() => deUrl(sp).view); // mes | upcoming | recent | novedades | canciones | descubre | labels | radar | quiero
-  const [manage,setManage] = useState(false);
-  const [format, setFormat] = useState('all');
-  const [edition, setEdition] = useState('new');
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
   const [all, setAll] = useState(() => deUrl(sp).all);
@@ -1085,8 +1081,8 @@ export default function Calendar() {
   const [queue, setQueue] = useState(null);
   const [search, setSearch] = useState(null);
   const [labels, setLabels] = useState([]);
-  const [curators, setCurators] = useState([]);
   const [srcOff, setSrcOff] = useState(loadSourcesOff);
+  const [curators, setCurators] = useState([]);
   // Lo que ya tienes NO se filtra en el servidor: viene siempre y la UI lo agrupa arriba,
   // plegado (ver OwnedSection). Un solo criterio para todas las pestañas, en vez de un
   // «ocultar lo que tengo» aquí y un «incluir lo que tengo» allá.
@@ -1111,11 +1107,8 @@ export default function Calendar() {
   const [discoverAll, setDiscoverAll] = useState(false); // mostrar también lo sin relación contigo
 
   const loadLabels = () => api.trackedLabels().then(setLabels).catch(() => {});
+  useEffect(() => { api.curators().then(setCurators).catch(() => {}); }, []);
   const loadCurators = () => api.curators().then(setCurators).catch(() => {});
-
-  useEffect(() => {
-    loadCurators(); // el selector de fuentes necesita los curadores en todas las pestañas, no solo en Radar
-  }, []);
 
   useEffect(() => {
     setRows(null);
@@ -1264,11 +1257,11 @@ export default function Calendar() {
   const isOwnedRow = (r) => !!(r.is_owned || r.owned);
   // Reparto común a TODAS las listas: lo que ya tienes se saca de los grupos por mes/semana y
   // se junta en la sección plegable de arriba, ordenado por fecha descendente.
-  const shownRows = (rows || []).filter((r) => !srcOff.has(rowSource(view, r)) && matchesRelease(r, format, edition === 'radar' ? 'all' : edition));
-  const ownedRows = shownRows
+  const visible = (rows || []).filter(r => !srcOff.has(rowSource(view, r)));
+  const ownedRows = visible
     .filter(isOwnedRow)
     .sort((a, b) => (b.first_release || b.release_date || '').localeCompare(a.first_release || a.release_date || ''));
-  const freshRows = shownRows.filter((r) => !isOwnedRow(r));
+  const freshRows = visible.filter((r) => !isOwnedRow(r));
 
   // En el Radar, los pre-pedidos / futuros van a su propia sección arriba (no
   // mezclados con lo ya estrenado dentro de la ventana), ordenados por fecha de
@@ -1309,12 +1302,7 @@ export default function Calendar() {
 
   const tab = (id, label) => (
     <button
-      onClick={() => {
-        setView(id);
-        setEdition('all');
-        if (id === 'canciones') setFormat('single');
-        else if (view === 'canciones' && format === 'single') setFormat('all');
-      }}
+      onClick={() => setView(id)}
       className={`px-3 py-1.5 rounded-lg text-sm border ${
         view === id ? 'border-gold-500/50 bg-gold-500/15 text-gold-300' : 'border-ink-800 bg-ink-850 text-neutral-400'
       }`}
@@ -1413,19 +1401,15 @@ export default function Calendar() {
       <QuickSearch />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {[['new','Estrenos'],['reissue','Reediciones'],['radar','Radar'],['unknown','Sin verificar']].map(([key,label]) =>
-          <button key={key} className={view === 'mes' && edition === key ? 'btn text-gold-300' : 'btn'} aria-pressed={view === 'mes' && edition === key}
-            onClick={() => {setView('mes');setEdition(key);}}>{label}</button>)}
-        <button className="btn" aria-expanded={manage} onClick={() => setManage(!manage)}>Fuentes y gestión</button>
-        {manage && <>
+        {tab('mes', '📅 Mes')}
         {tab('upcoming', 'Próximos')}
         {tab('recent', 'Estrenados recientemente')}
         {tab('novedades', '💿 Discos nuevos')}
         {tab('canciones', '🎵 Canciones nuevas')}
         {tab('descubre', '🌐 Descubre')}
         {tab('labels', 'De tus sellos')}
-        {tab('radar', 'Curadores')}
-        {tab('quiero', '♥ Lo quiero')}</>}
+        {tab('radar', 'Radar')}
+        {tab('quiero', '♥ Lo quiero')}
         {(view === 'upcoming' || view === 'recent') && (
           <label className="flex items-center gap-2 text-sm text-neutral-400 ml-auto cursor-pointer">
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
@@ -1477,23 +1461,8 @@ export default function Calendar() {
         )}
       </div>
 
-      {view !== 'quiero' && (
-        <div className="flex flex-wrap gap-3 mb-3">
-          <label className="text-sm">Formato
-            <select className="ml-2 rounded bg-ink-850 p-1" value={format} onChange={(e) => setFormat(e.target.value)}>
-              {Object.entries(formats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </label>
-          {view !== 'mes' && <label className="text-sm">Edición
-            <select className="ml-2 rounded bg-ink-850 p-1" value={edition} onChange={(e) => setEdition(e.target.value)}>
-              {Object.entries(editions).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </label>}
-        </div>
-      )}
       {view !== 'quiero' && <SourcePicker curators={curators} off={srcOff} setOff={setSrcOff} />}
-
-      {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} format={format} edition={edition} />}
+      {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} />}
 
       {view === 'quiero' && <WantedPanel onSearch={setSearch} />}
 
@@ -1600,11 +1569,7 @@ export default function Calendar() {
       {err && <ErrorMsg>{err}</ErrorMsg>}
       {!rows && !err ? (
         <Spinner />
-      ) : rows && rows.length > 0 && shownRows.length === 0 ? (
-        <div className="card p-6 text-center text-neutral-400">
-          Ninguno de los {rows.length} lanzamientos coincide con las fuentes y los filtros seleccionados.
-        </div>
-      ) : rows && rows.length === 0 ? (
+      ) : rows?.length && !visible.length ? (<p>Sin entradas de las fuentes seleccionadas.</p>) : rows && rows.length === 0 ? (
         <div className="card p-6 text-center text-neutral-400">
           {view === 'radar'
             ? curators.length === 0
