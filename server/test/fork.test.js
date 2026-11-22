@@ -102,14 +102,23 @@ test('por HTTP: los listados contestan y una lista que no existe lo dice', async
   assert.equal(resumen.json().noCover, 2);
   const lista = await app.inject({ method: 'GET', url: '/api/quality/list?kind=hires' });
   assert.equal(lista.json().total, 2);
-  // El fork conserva también la consulta por frecuencia exacta.
+  // la lista por frecuencia exacta ya no existe: una pestaña por cada una no decía nada
   const vieja = await app.inject({ method: 'GET', url: '/api/quality/list?kind=samplerate&rate=44100' });
-  assert.equal(vieja.statusCode, 200);
-  assert.ok(vieja.json().total > 0);
-  assert.ok(vieja.json().albums.every((album) => album.rates.includes(44100)));
-  const invalida = await app.inject({ method: 'GET', url: '/api/quality/list?kind=samplerate&rate=invalid' });
-  assert.equal(invalida.statusCode, 400);
+  assert.equal(vieja.statusCode, 400);
   const mala = await app.inject({ method: 'GET', url: '/api/quality/list?kind=inventada' });
   assert.equal(mala.statusCode, 400);
   assert.match(mala.json().error, /desconocida/);
+});
+
+test('Toda la biblioteca incluye CD y álbumes sin pistas y cuenta cada disco una vez', async () => {
+  alb.run(8, 'h', '/m/Pendiente', 'X', 'Pendiente', 2000, null, 'matched', 0);
+  try {
+    const {albums} = (await app.inject('/api/quality/list?kind=all')).json();
+    assert.equal(albums.length, (await app.inject('/api/quality/lists')).json().total);
+    assert.deepEqual(albums.filter(a => a.rates.includes(44100)).map(a => a.id).sort(), [1,2,5]);
+    assert.deepEqual(albums.find(a => a.id === 8).rates, []);
+    assert.ok(!albums.some(a => a.id === 4));
+  } finally {
+    db.prepare('DELETE FROM albums WHERE id=8').run();
+  }
 });

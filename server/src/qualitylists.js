@@ -64,7 +64,7 @@ function albumesCon(having) {
               GROUP_CONCAT(DISTINCT t.sample_rate) AS rates,
               GROUP_CONCAT(DISTINCT t.bit_depth) AS bits,
               GROUP_CONCAT(DISTINCT t.format) AS formats
-       FROM albums a JOIN tracks t ON t.album_id = a.id
+       FROM albums a LEFT JOIN tracks t ON t.album_id = a.id
        WHERE ${LIVE}
        GROUP BY a.id HAVING ${having} ${ORDER}`
     )
@@ -106,32 +106,8 @@ export function albumsWithoutCover() {
     .all();
 }
 
-export function albumsAtSampleRate(rate) {
-  const hz = Math.round(Number(rate));
-  if (!Number.isFinite(hz) || hz <= 0) throw new Error('Frecuencia de muestreo no válida');
-  const rows = db
-    .prepare(
-      `SELECT a.id, a.title, a.album_artist, a.year, a.path, a.track_file_count,
-        COUNT(t.id) AS at_rate,
-        (SELECT GROUP_CONCAT(DISTINCT t2.sample_rate) FROM tracks t2
-          WHERE t2.album_id = a.id AND t2.sample_rate IS NOT NULL) AS rates
-       FROM albums a JOIN tracks t ON t.album_id = a.id AND t.sample_rate = @hz
-       WHERE ${LIVE}
-       GROUP BY a.id ${ORDER}`
-    )
-    .all({ hz });
-  return rows.map((r) => ({
-    ...r,
-    rates: String(r.rates || '')
-      .split(',')
-      .map(Number)
-      .filter(Boolean)
-      .sort((x, y) => x - y),
-  }));
-}
-
 const LISTAS = {
-  samplerate: albumsAtSampleRate,
+  all: () => albumesCon('1'),
   hires: albumsHiRes,
   belowcd: albumsBelowCd,
   mixed: albumsMixedRates,
@@ -140,17 +116,15 @@ const LISTAS = {
 };
 
 export function registerQualityLists(app) {
-  app.get('/api/quality/lists', async () => {
-    const sampleRates = db.prepare(`SELECT t.sample_rate AS rate, COUNT(DISTINCT a.id) AS albums
-      FROM tracks t JOIN albums a ON a.id=t.album_id WHERE ${LIVE} AND t.sample_rate IS NOT NULL
-      GROUP BY t.sample_rate ORDER BY albums DESC`).all();
-    return { ...qualityListsSummary(), sampleRates };
-  });
+  app.get('/api/quality/lists', async () => ({
+    ...qualityListsSummary(),
+    total: db.prepare(`SELECT COUNT(*) AS n FROM albums a WHERE ${LIVE}`).get().n,
+  }));
   app.get('/api/quality/list', async (req, reply) => {
     const kind = String(req.query?.kind || '');
     if (!Object.hasOwn(LISTAS, kind)) return reply.code(400).send({ error: 'Lista desconocida' });
     try {
-      const albums = LISTAS[kind](req.query?.rate);
+      const albums = LISTAS[kind]();
       return { kind, total: albums.length, albums };
     } catch (err) {
       return reply.code(400).send({ error: String(err.message || err) });
