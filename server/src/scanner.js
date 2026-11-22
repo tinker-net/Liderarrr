@@ -26,6 +26,7 @@ const AUDIO_EXT = new Set([
   '.flac', '.mp3', '.m4a', '.aac', '.ogg', '.opus', '.oga', '.wav', '.wv', '.ape',
   '.alac', '.aiff', '.aif', '.dsf', '.dff', '.mpc', '.tak', '.tta', '.wma',
 ]);
+const COVER_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const COVER_NAMES = ['cover', 'folder', 'front', 'albumart', 'album'];
 
 export const scanStatus = {
@@ -63,6 +64,7 @@ async function scanTree(dir, onFolder) {
   }
   const files = [];
   const subdirs = [];
+  const images = [];
   for (const e of entries) {
     // Ocultos y basura del sistema fuera, carpetas y ficheros: un `._x.flac` tiene la
     // extensión de una pista pero no es audio (ver isJunkEntry en libkey.js).
@@ -70,24 +72,20 @@ async function scanTree(dir, onFolder) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) subdirs.push(full);
     else if (e.isFile() && isAudio(e.name)) files.push(full);
+    else if (e.isFile() && COVER_EXTENSIONS.has(path.extname(e.name).toLowerCase())) images.push(e.name);
   }
-  if (files.length) await onFolder({ dir, files });
+  if (files.length) await onFolder({ dir, files, cover: findCover(dir, images) });
   for (const sd of subdirs) await scanTree(sd, onFolder);
 }
 
-function findCover(dir, files) {
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      if (isJunkEntry(f)) continue; // un `._cover.jpg` no es una imagen
-      const ext = path.extname(f).toLowerCase();
-      if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) continue;
-      const base = path.basename(f, ext).toLowerCase();
-      if (COVER_NAMES.some((n) => base.includes(n))) return path.join(dir, f);
-    }
-  } catch {
-    /* noop */
-  }
-  return null;
+function findCover(dir, images) {
+  const names = images.sort();
+  const preferred = names.find((name) => {
+    const stem = name.slice(0, -path.extname(name).length).toLowerCase();
+    return COVER_NAMES.some((candidate) => stem.includes(candidate));
+  });
+  const selected = preferred ?? names[0];
+  return selected ? path.join(dir, selected) : null;
 }
 
 const upsertArtist = db.prepare(
@@ -163,7 +161,7 @@ async function parseTags(file) {
   ]);
 }
 
-async function ingestFolder({ dir, files }) {
+async function ingestFolder({ dir, files, cover }) {
   const tracks = [];
   let totalSize = 0;
   let totalDur = 0;
@@ -274,7 +272,7 @@ async function ingestFolder({ dir, files }) {
     duration_ms: Math.round(totalDur),
     added_at: Math.round(stat.mtimeMs),
     scanned_at: Date.now(),
-    cover: findCover(dir, files),
+    cover,
   });
 
   const albumId = getAlbumId.get(localKey).id;
@@ -297,10 +295,10 @@ async function ingestFolder({ dir, files }) {
 }
 
 // datos de un álbum ya en BD por su identidad, para el salto incremental.
-const scannedAtOf = db.prepare('SELECT id, scanned_at, path FROM albums WHERE local_key = ?');
+const scannedAtOf = db.prepare('SELECT id, scanned_at, path, cover FROM albums WHERE local_key = ?');
 // si la carpeta se saltó pero su ruta cambió (p. ej. tras cambiar el montaje a /data),
 // se actualiza la ruta sin re-ingerir: identidad intacta, ruta al día.
-const fixAlbumPath = db.prepare('UPDATE albums SET path = ? WHERE id = ?');
+const fixAlbumPath = db.prepare('UPDATE albums SET path = ?, cover = ? WHERE id = ?');
 
 // Recorre la biblioteca. `opts.roots` sobrescribe music_dirs; `opts.force` reescanea
 // TODO (ignora el salto incremental).
@@ -345,7 +343,9 @@ export async function runScan(opts = {}) {
         if (mtime && mtime <= existing.scanned_at) {
           // misma identidad y sin cambios: se salta. Pero si la ruta cambió (montaje
           // nuevo), se actualiza para que carátulas y rutas apunten al sitio real.
-          if (existing.path !== folder.dir) fixAlbumPath.run(folder.dir, existing.id);
+          if (existing.path !== folder.dir || (!existing.cover && folder.cover)) {
+            fixAlbumPath.run(folder.dir, folder.cover, existing.id);
+          }
           scanStatus.skipped++;
           return;
         }
