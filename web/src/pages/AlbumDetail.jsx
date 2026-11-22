@@ -4,6 +4,8 @@ import { ArrowLeft, Music2, Sparkles, RotateCcw, Disc3, ExternalLink, Tag, Alert
 import { api, fmtBytes, pollLidarrQueue } from '../api.js';
 import { openMbReleaseEditor } from '../mb.js';
 import { Cover, ArtistPhoto, StateBadge, Spinner, ErrorMsg, Button, useLidarrEnabled, DuplicateCopies, AddToChallengeButton, WantButton, ReleaseYear, GenreChips, VetoButton } from '../components.jsx';
+import { aviso, confirmar } from '../avisos.jsx';
+import { deDondeVienes } from '../volver.js';
 
 // orphan y bootleg son «de primera clase»: material fuera de catálogo (rarezas y
 // directos no oficiales) que cuenta en lo descriptivo pero no en el completismo. En toda
@@ -76,14 +78,19 @@ export default function AlbumDetail() {
   // con guardarraíles en el backend (solo dentro de music_dirs, nunca torrents/). Doble
   // confirmación dura antes de tocar nada.
   const deleteFromDisk = async () => {
-    if (!window.confirm(`¿Borrar del disco «${album.album_artist} — ${album.title}»?\n\nSe eliminan los ficheros de su carpeta en la biblioteca. Esto NO se puede deshacer.`))
+    if (
+      !(await confirmar(
+        `¿Borrar del disco «${album.album_artist} — ${album.title}»?\n\nSe eliminan los ficheros de su carpeta en la biblioteca. Esto NO se puede deshacer.`,
+        { aceptar: 'Borrar del disco', peligro: true }
+      ))
+    )
       return;
     setBusy(true);
     try {
       await api.deleteAlbum(id);
       navigate('/discoteca');
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       setBusy(false);
     }
   };
@@ -101,7 +108,7 @@ export default function AlbumDetail() {
       setEditTitle(false);
       await load();
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -112,18 +119,19 @@ export default function AlbumDetail() {
   // artista). No toca el origen de descargas; el seeding sobrevive (mismo volumen).
   const refile = async () => {
     if (
-      !window.confirm(
-        `¿Ordenar en su carpeta «${album.album_artist} — ${album.title}»?\n\nMueve la carpeta del álbum a la estructura {artista}/{álbum} dentro de la biblioteca. No toca el origen de descargas.`
-      )
+      !(await confirmar(
+        `¿Ordenar en su carpeta «${album.album_artist} — ${album.title}»?\n\nMueve la carpeta del álbum a la estructura {artista}/{álbum} dentro de la biblioteca. No toca el origen de descargas.`,
+        { aceptar: 'Ordenar' }
+      ))
     )
       return;
     setBusy(true);
     try {
       const r = await api.refileAlbum(id);
-      alert(r.moved ? `Movido a:\n${r.to}` : r.message || 'Ya estaba en su carpeta.');
+      aviso(r.moved ? `Movido a:\n${r.to}` : r.message || 'Ya estaba en su carpeta.', 'ok');
       await load();
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -133,11 +141,13 @@ export default function AlbumDetail() {
   if (!album) return <Spinner label="Cargando álbum…" />;
 
   const incomplete = album.track_file_count < album.track_count;
+  // De dónde viniste de verdad, con los filtros que llevabas puestos.
+  const volver = deDondeVienes();
 
   return (
     <div>
-      <Link to="/discoteca" className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-gold-400 mb-4">
-        <ArrowLeft size={15} /> Discoteca
+      <Link to={volver.to} className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-gold-400 mb-4">
+        <ArrowLeft size={15} /> {volver.label}
       </Link>
 
       <div className="flex flex-col md:flex-row gap-6 mb-6">
@@ -744,14 +754,15 @@ function TagWriter({ albumId }) {
   };
 
   const write = async () => {
-    if (!confirm('Se escribirán los identificadores de MusicBrainz en los ficheros de este álbum. ¿Continuar?')) return;
+    if (!(await confirmar('Se escribirán los identificadores de MusicBrainz en los ficheros de este álbum. ¿Continuar?', { aceptar: 'Escribir' })))
+      return;
     setWriting(true);
     try {
       const r = await api.writeTags(albumId);
       setDone(r);
       await load();
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setWriting(false);
     }
@@ -933,20 +944,20 @@ function DiscBox({ album, onDone }) {
     try {
       setBox(await api.identifyBox(album.id));
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setIdent(false);
     }
   };
 
   const separate = async () => {
-    if (!window.confirm('¿Separar la caja multidisco? Cada disco vuelve a ser un álbum independiente.')) return;
+    if (!(await confirmar('¿Separar la caja multidisco? Cada disco vuelve a ser un álbum independiente.', { aceptar: 'Separar' }))) return;
     setBusy(true);
     try {
       await api.uncombineAlbum(album.id);
       await onDone();
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -1370,7 +1381,7 @@ function TrackList({ album }) {
     try {
       await api.fetchAlbumLyrics(album.id);
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       return;
     }
     clearInterval(sondeo.current);
@@ -1404,11 +1415,25 @@ function TrackList({ album }) {
   const conLetra = Object.values(estado).filter((e) => e.state === 'found' || e.state === 'instrumental').length;
   const buscadas = Object.values(estado).filter((e) => e.state).length;
 
+  // El formato se dice UNA vez, arriba. Repetirlo en cada fila («FLAC · 812k · 16bit»)
+  // se comía el ancho en el móvil y dejaba la DURACIÓN fuera de pantalla, sin forma de
+  // verla. Por fila solo se marca la pista que se sale del resto, que es la que importa.
+  const ficha = (t) => [t.format, t.bit_depth ? `${t.bit_depth}bit` : null].filter(Boolean).join(" · ");
+  const cuenta = new Map();
+  for (const t of album.tracks) cuenta.set(ficha(t), (cuenta.get(ficha(t)) || 0) + 1);
+  const dominante = [...cuenta.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
   return (
     <div className="card overflow-hidden mb-6">
       <div className="px-4 py-2.5 border-b border-ink-800 flex items-center justify-between gap-2 text-sm text-neutral-400 flex-wrap">
         <span className="inline-flex items-center gap-2">
           <Music2 size={15} /> Pistas
+          {dominante && (
+            <span className="text-xs text-neutral-600">
+              · {dominante}
+              {cuenta.size > 1 ? " y otros" : ""}
+            </span>
+          )}
           {conLetra > 0 && (
             <span className="text-xs text-neutral-600">
               · {conLetra} con letra{buscadas > conLetra ? ` (${buscadas - conLetra} sin)` : ''}
@@ -1453,7 +1478,12 @@ function TrackList({ album }) {
                 <tr className="border-b border-ink-850/60 last:border-0 hover:bg-ink-850/40">
                   <td className="py-2 px-4 text-neutral-600 w-10 text-right">{t.num || '·'}</td>
                   <td className="py-2 pr-4">
-                    <div className="truncate">{t.title}</div>
+                    <div className="truncate">
+                      {t.title}
+                      {ficha(t) !== dominante && (
+                        <span className="sm:hidden ml-2 text-[11px] pista-distinta whitespace-nowrap">{ficha(t)}</span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 pr-2 w-8">
                     <button
@@ -1478,7 +1508,7 @@ function TrackList({ album }) {
                       <Mic2 size={13} />
                     </button>
                   </td>
-                  <td className="py-2 pr-4 text-neutral-500 whitespace-nowrap">
+                  <td className={`hidden sm:table-cell py-2 pr-4 whitespace-nowrap ${ficha(t) !== dominante ? 'pista-distinta' : 'text-neutral-500'}`}>
                     <span className={t.lossless ? 'text-emerald-400/80' : ''}>{t.format}</span>
                     {t.bitrate ? ` · ${Math.round(t.bitrate / 1000)}k` : ''}
                     {t.bit_depth ? ` · ${t.bit_depth}bit` : ''}
@@ -1566,13 +1596,13 @@ function MissingFromArtistRow({ m, artist }) {
     try {
       const res = await api.grabBest(`${artist} ${m.title}`, { rg_mbid: m.rg_mbid, artist, album: m.title });
       if (!res.grabbed) {
-        alert(`No se pudo agarrar: ${res.reason || 'sin release'}`);
+        aviso(`No se pudo agarrar: ${res.reason || 'sin release'}`, 'error');
         setState(null);
         return;
       }
       setState('done');
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       setState(null);
     }
   };
@@ -1620,13 +1650,13 @@ function RecAlbumRow({ r, onVetoed }) {
     try {
       const res = await api.grabBest(`${r.artist} ${r.album}`, { artist: r.artist, album: r.album });
       if (!res.grabbed) {
-        alert(`No se pudo agarrar: ${res.reason || 'sin release'}`);
+        aviso(`No se pudo agarrar: ${res.reason || 'sin release'}`, 'error');
         setGrabState(null);
         return;
       }
       setGrabState('done');
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       setGrabState(null);
     }
   };
@@ -1642,7 +1672,7 @@ function RecAlbumRow({ r, onVetoed }) {
       }
       setFollowed(true);
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setFbusy(false);
     }

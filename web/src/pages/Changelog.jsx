@@ -9,6 +9,99 @@ import { PageTitle } from '../components.jsx';
 
 const RELEASES = [
   {
+    version: '1.7.3',
+    title: '«Probar Prowlarr» te dice qué indexer está callado',
+    items: [
+      'Una búsqueda de Prowlarr junta lo de todos tus trackers: si uno no contesta, llegan los resultados de los demás y nadie avisa. Desde Liderarrr solo se veía que de ese tracker no salía nada.',
+      'Ahora Ajustes → Probar Prowlarr lista cada indexer con lo que le pasa: desactivado, apartado por fallos hasta tal hora, con «Freeload Only» activado, con los tokens de freeleech en «Required», con un tope de consultas, o sin la categoría de música.',
+      'Lo lee de la configuración del propio Prowlarr: no sale ninguna petición al tracker.',
+    ],
+  },
+  {
+    version: '1.7.2',
+    title: 'El enlace de volver ya no se inventa de dónde venías',
+    items: [
+      'La ficha de disco llevaba un «← Discoteca» fijo. Si venías de la Discoteca con un filtro puesto, lo perdía (el atrás del navegador sí lo conservaba, así que había dos «atrás» que no hacían lo mismo). Y si llegabas desde un artista, desde Huecos o desde un género, te mandaba a un sitio donde no habías estado.',
+      'Ahora te devuelve a la lista de la que viniste, con los filtros que llevabas, y se llama como esa lista: «← Artista», «← Huecos», «← Calidad y disco». Si abres un enlace guardado en una pestaña nueva, sigue diciendo «← Discoteca» como siempre.',
+    ],
+  },
+  {
+    version: '1.7.1',
+    title: 'En el móvil ya se ve cuánto dura cada canción',
+    items: [
+      'La duración de las pistas se salía de la pantalla del móvil: caía 23 píxeles fuera del borde y la fila no se desplaza a lo ancho, así que no había manera de verla. Se la comía la etiqueta técnica repetida en cada fila («FLAC · 812k · 16bit»).',
+      'Ahora el formato se dice una sola vez, arriba junto a «Pistas», y avisa si el disco mezcla formatos. Por fila solo se marca la pista que se sale del resto: la MP3 entre FLACs, o la que va a 16 bits cuando las demás van a 24. En pantalla grande la columna técnica sigue entera y es esa pista la que va resaltada.',
+      'Y tres avisos de seguridad nuevos, de arrastre, parcheados: de cinco a dos.',
+    ],
+  },
+  {
+    version: '1.7.0',
+    title: 'Los discos sin identificar vuelven a intentarlo solos',
+    items: [
+      'Hasta ahora, un disco que no se identificaba a la primera no se volvía a mirar nunca más: el refresco nocturno solo repasaba los recién escaneados. Cada disco tenía un único intento en toda su vida, y la única forma de darle otro era acordarse de pulsar «Reintentar identificación» y dejar la pasada llegar al final.',
+      'Ahora cada noche se repasa una tanda de los que quedaron pendientes. Van primero los que no tienen artista, que son justo aquellos para los que hay algo nuevo que probar: sin artista, la búsqueda por texto no puede hacer nada y solo queda la huella del audio.',
+      'La tanda es de 300 por noche y no se toca el mismo disco dos veces en menos de dos semanas, porque cada uno cuesta sus llamadas a MusicBrainz y hasta cuatro huellas. Con una biblioteca de 33.516 álbumes, los 528 sin artista quedan repasados en dos noches y la cola entera da la vuelta en diez.',
+    ],
+  },
+  {
+    version: '1.6.2',
+    title: 'Las rutas de la API ya se pueden probar',
+    items: [
+      'Por fuera no cambia nada. Por dentro, arrancar el servidor y registrar las rutas dejan de ser lo mismo: antes, cargar el fichero principal abría el puerto y programaba los cron, así que no había forma de probar una ruta sin levantar la app entera.',
+      'Ahora hay diez pruebas que entran por donde entras tú, y las que más importan son las de lo que destruye: borrar del disco no borra sin confirmación expresa y se niega en seco si la carpeta está fuera de tu biblioteca. La prueba deja un fichero fuera a propósito y comprueba que sigue ahí.',
+      'Son también las que habrían cazado el fallo de paginación de la versión anterior, que solo aparecía pasando por HTTP. Comprobado volviendo a meter el fallo: la prueba falla.',
+    ],
+  },
+  {
+    version: '1.6.1',
+    title: 'La base recoge sus propios restos',
+    items: [
+      '«Identificar y sincronizar» tiene un paso nuevo: recoger lo que se queda suelto en la base. Al borrar un álbum o fusionar una ficha de artista, lo que colgaba de ellos —pistas, etiquetas, créditos, letras, resúmenes, discografías, seguimientos— podía quedarse ahí, porque el esquema no tiene claves ajenas que lo impidan.',
+      'Lo que de verdad molestaba: un lanzamiento que guardaba el puntero a una copia tuya ya borrada seguía contando como «lo tienes». No salía entre lo que te falta y la auto-descarga no volvía a pedirlo nunca. Ahora el puntero se suelta y el disco vuelve a contar como ausente.',
+      'Es conservador a propósito: solo toca filas cuyo padre ya no existe, y nunca tus álbumes ni tus fichas de artista. Si un disco tuyo se queda sin ficha de artista, lo cuenta y lo dice en Diagnóstico, pero no lo borra: ahí están tus ficheros.',
+    ],
+  },
+  {
+    version: '1.6.0',
+    title: 'La Discoteca ya no se queda en 500 discos',
+    items: [
+      'La Discoteca enseñaba los primeros 500 álbumes y no había forma de llegar al resto: con 27.000 discos, eso era el 1,8 % de la colección. Ahora, al llegar abajo, trae más de 500 en 500; hay un botón «Ver más» que dice cuántos quedan, y la cabecera cuenta lo que estás viendo de verdad («1000 de 27.102 álbumes»).',
+      'Por el camino salió el motivo de que nunca se hubiera notado: pedir la segunda página devolvía media biblioteca de golpe. Los parámetros llegan de la URL como texto y al recortar la lista se sumaban como texto, así que el corte se iba hasta el final. Queda fijado con tests.',
+      'Y ordenar por título o por artista pasa de 3,5 segundos a 0,2 con la biblioteca grande: cada comparación estaba construyendo un comparador de idioma nuevo. Se nota en toda la app.',
+      'El orden «aleatorio» tampoco repite discos al traer más: antes barajaba otra vez en cada petición y la segunda tanda podía devolverte lo ya visto.',
+    ],
+  },
+  {
+    version: '1.5.0',
+    title: 'Se acabaron los cuadros del navegador',
+    items: [
+      'Los 103 avisos y confirmaciones de la app dejan de ser los del navegador. Aquellos congelaban la pestaña entera mientras estaban abiertos —se paraba hasta el reloj del escaneo—, salían con un «localhost:3861 dice» delante y no se parecían en nada al resto de la interfaz.',
+      'Ahora los avisos salen flotando abajo a la derecha, no bloquean nada, se van solos (los errores tardan más), se pueden cerrar a mano y nunca hay más de cuatro. Los mensajes largos respetan sus saltos de línea y hacen scroll si no caben.',
+      'Y las preguntas tienen diálogo propio, con el botón diciendo lo que va a hacer («Borrar del disco», «Reemplazar», «Importar igualmente») en vez de «Aceptar», y en rojo cuando no tiene vuelta atrás. Se cancela con Escape o pinchando fuera, y Enter solo confirma si el foco sigue en el botón.',
+      'Todo con su variante para el tema claro, que es donde el rojo pálido sobre blanco no había quien lo leyera.',
+    ],
+  },
+  {
+    version: '1.4.4',
+    title: 'El contenedor ya no tiene por qué ser root',
+    items: [
+      'Nuevas variables PUID y PGID, las mismas que usan las demás *arr: si las pones en el compose, el contenedor arranca como root, se prepara y baja a ese usuario antes de ejecutar la app. A partir de ahí corre sin privilegios y ni siquiera puede tocar su propio código.',
+      'Solo cambia de dueño lo que es suyo (la base de datos, img/ y backups/), nunca la carpeta que montas en /data: en la estructura recomendada esa carpeta es la raíz de tu música y tus descargas. Y antes de soltar el timón comprueba que ese usuario puede escribir ahí; si no puede, se queda como root y te lo dice en el log con el chown exacto que lo arregla.',
+      'Si no pones PUID/PGID no cambia nada: sigue arrancando como siempre. Una instalación que ya existe tiene los ficheros de /data creados por root, y cambiarle el usuario a la brava la dejaría sin poder abrir su propia base.',
+      'Además, la imagen se construye con npm ci en vez de npm install: instala exactamente lo que dice el lock, así que lleva las versiones parcheadas que se probaron y no otras.',
+    ],
+  },
+  {
+    version: '1.4.3',
+    title: 'Al día con los parches de seguridad',
+    items: [
+      'De 16 avisos de seguridad en las dependencias (3 críticos, 10 altos) a 2. El salto gordo es Fastify 4 → 5, que es lo que permite actualizar las dos piezas donde estaban los agujeros de verdad: el servidor de ficheros estáticos (salto de autorización y recorrido de directorios: la app sirve su propia interfaz, así que cualquiera que llegara al puerto lo tocaba) y el lector de subidas de ficheros (denegación de servicio e inyección de CRLF).',
+      'También sube el lector de etiquetas (music-metadata 10 → 12), que se quedaba en bucle infinito con un .wma malformado; y eso lo come el escaneo de tu biblioteca. Comprobado antes de subirlo que sigue leyendo igual título, artistas, álbum, pista y disco, año, género, sello, los MBID, el ReplayGain, el formato, la carátula incrustada y la duración.',
+      'Los 2 avisos que quedan no se arreglan a propósito: lo que propone npm es bajar la librería que escribe las etiquetas cinco versiones mayores, y el fallo solo aparece de una forma que esa librería no usa.',
+      'De paso, un fallo sin motivo propio y por debajo de 500 ya no dice «Error inesperado en el servidor», sino «La petición no se pudo atender (403)».',
+    ],
+  },
+  {
     version: '1.4.2',
     title: 'Cuando algo falla, la app dice qué ha fallado',
     items: [

@@ -5,6 +5,7 @@ import { api, pollLidarrQueue } from '../api.js';
 import { PageTitle, Spinner, ErrorMsg, SearchModal, QuickSearch, AddToChallengeButton, WantButton, useLidarrEnabled } from '../components.jsx';
 import MonthCalendar from './MonthCalendar.jsx';
 import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff, rowSource } from '../sources.js';
+import { aviso } from '../avisos.jsx';
 
 // Lanzamientos: cuatro vistas. «Próximos» (release groups por estrenar de tus artistas),
 // «Estrenados recientemente» (ya estrenados dentro de una ventana; por defecto este año),
@@ -248,7 +249,7 @@ function LabelManager({ labels, onChange }) {
       await api.followLabel({ mbid: l.mbid, name: l.name, disambiguation: l.disambiguation, country: l.country });
       await onChange();
     } catch (e2) {
-      alert(e2.message);
+      aviso(e2.message, 'error');
     } finally {
       setBusy(null);
     }
@@ -268,7 +269,7 @@ function LabelManager({ labels, onChange }) {
       await api.refreshLabel(mbid);
       await onChange();
     } catch (e2) {
-      alert(e2.message);
+      aviso(e2.message, 'error');
     } finally {
       setBusy(null);
     }
@@ -392,7 +393,7 @@ function RadarRow({ r, onSearch, onFollowMbid, onQueue, lidarrOn }) {
       }
       setState('added');
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       setState('idle');
     }
   };
@@ -407,7 +408,7 @@ function RadarRow({ r, onSearch, onFollowMbid, onQueue, lidarrOn }) {
       await onFollowMbid(res.artist_mbid);
       setState('idle');
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
       setState('idle');
     }
   };
@@ -591,7 +592,7 @@ function CuratorManager({ curators, onChange }) {
       await api.refreshCurator(id);
       await onChange();
     } catch (e2) {
-      alert(e2.message);
+      aviso(e2.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -832,7 +833,7 @@ function WantedPanel({ onSearch }) {
       await api.unwantAlbum({ id: w.id });
       load();
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     }
   };
 
@@ -1077,13 +1078,13 @@ export default function Calendar() {
       } else {
         const res = await api.grabBest(`${r.artist} ${r.title}`, { rg_mbid: r.rg_mbid, artist: r.artist, album: r.title });
         if (!res.grabbed) {
-          alert(`No se pudo agarrar: ${res.reason || 'sin release'}`);
+          aviso(`No se pudo agarrar: ${res.reason || 'sin release'}`, 'error');
           return;
         }
       }
       setAdded((p) => ({ ...p, [r.rg_mbid]: true }));
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setBusy(null);
     }
@@ -1096,7 +1097,7 @@ export default function Calendar() {
       else return;
       setFollowed((p) => ({ ...p, [key]: true }));
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     }
   };
   // Novedad externa (sin rg_mbid): descarga SIEMPRE nativa (grabBest por texto).
@@ -1105,12 +1106,12 @@ export default function Calendar() {
     try {
       const res = await api.grabBest(`${r.artist} ${r.title}`, { artist: r.artist, album: r.title });
       if (!res.grabbed) {
-        alert(`No se pudo agarrar: ${res.reason || 'sin release'}`);
+        aviso(`No se pudo agarrar: ${res.reason || 'sin release'}`, 'error');
         return;
       }
       setAdded((p) => ({ ...p, [`ext${r.id}`]: true }));
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     } finally {
       setBusy(null);
     }

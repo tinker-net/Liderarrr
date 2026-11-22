@@ -4,6 +4,7 @@ import { HardDrive } from 'lucide-react';
 import { api, fmtBytes } from '../api.js';
 import { PageTitle, Stat, Spinner, ErrorMsg, DuplicateGroupPanel } from '../components.jsx';
 import QualityLists, { AutoSyncCard } from './QualityLists.jsx';
+import { aviso } from '../avisos.jsx';
 
 export default function Quality() {
   const [ov, setOv] = useState(null);
@@ -26,7 +27,7 @@ export default function Quality() {
     try {
       setGroup(await api.dupGroup(firstId));
     } catch (e) {
-      alert(e.message);
+      aviso(e.message, 'error');
     }
   };
 

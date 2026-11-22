@@ -7,6 +7,260 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/).
 
 ---
 
+## [1.7.3] - 2026-11-21
+
+**«Probar Prowlarr» te dice qué indexer está callado y por qué.** Una búsqueda de Prowlarr es
+un agregado: si un tracker no contesta, llegan los resultados de los demás y nadie avisa.
+Desde Liderarrr solo se veía «de Redacted no sale nada».
+
+### Añadido
+- **Ajustes → Probar Prowlarr** lista ahora cada indexer con su estado, lo peor primero:
+  - **desactivado**, o **apartado por fallos** hasta tal hora (Prowlarr deja de consultarlo y
+    solo lo apunta en su log de depuración);
+  - **«Freeload Only» activado** en Redacted: descarta todo lo que no sea freeload, o sea casi
+    todo;
+  - **«Use Freeleech Tokens» en Required**: se salta cada torrent en el que no puedas gastar
+    token;
+  - **tope de consultas** por día u hora: al llegar, devuelve vacío sin ningún mensaje;
+  - que **no declare la categoría de música**, que es la que piden estas búsquedas.
+- Son dos consultas a la configuración del propio Prowlarr: **no sale ninguna petición al
+  tracker**, y la API key del indexer no viaja en el informe.
+
+---
+
+## [1.7.2] - 2026-11-05
+
+**El enlace de volver de una ficha ya no se inventa de dónde venías.**
+
+### Arreglado
+- La ficha de disco llevaba un «← Discoteca» fijo, y eso fallaba de dos maneras. Si venías de
+  la Discoteca **con un filtro puesto, lo perdía** —mientras que el atrás del navegador sí lo
+  conservaba, así que había dos «atrás» que no hacían lo mismo—. Y si llegabas desde la página
+  de un artista, desde Huecos o desde un género, te mandaba a un sitio donde no habías estado.
+- Ahora el enlace te devuelve **a la lista de la que viniste, con los filtros que llevabas**, y
+  se llama como esa lista: «← Artista», «← Huecos», «← Calidad y disco». Si llegas de fuera —un
+  enlace guardado, una pestaña nueva— sigue diciendo «← Discoteca», como siempre.
+
+---
+
+## [1.7.1] - 2026-11-05
+
+**En el móvil no se veía cuánto dura ninguna canción.** Salió en una ronda de pruebas hecha
+como las hace un usuario: con el móvil en la mano, no llamando a funciones por dentro.
+
+### Arreglado
+- **La duración de cada pista se salía de la pantalla.** Medido a 375 px: el número caía 23
+  píxeles fuera del borde, y la fila no se puede desplazar a lo ancho, así que no había forma
+  humana de verlo. La culpa era la etiqueta técnica repetida en cada fila —`FLAC · 812k ·
+  16bit`— comiéndose el ancho.
+- Ahora **el formato se dice una sola vez**, arriba, junto a «Pistas» («· FLAC · 16bit»), y si el
+  disco mezcla formatos lo avisa («y otros»). Por fila solo se marca **la pista que se sale del
+  resto** —la MP3 entre FLACs, la que va a 16 bits cuando las demás van a 24—, que es justo la
+  que querías ver. En pantalla grande la columna técnica sigue ahí, entera, y es esa pista la que
+  va resaltada.
+
+### Seguridad
+- Tres avisos nuevos de esta semana, todos de arrastre por `@fastify/static` (`glob`,
+  `minimatch`), parcheados sin romper nada. De **5 a 2**; los dos que quedan son el `uuid` de
+  `node-taglib-sharp`, cuyo «arreglo» sigue siendo bajar cinco versiones mayores la librería que
+  escribe las etiquetas.
+
+---
+
+## [1.7.0] - 2026-10-28
+
+**Los discos sin identificar vuelven a intentarlo solos.** Hasta ahora, un disco que no se
+identificaba a la primera no se volvía a mirar JAMÁS: el refresco nocturno solo repasaba los
+recién escaneados. Cada disco tenía un único intento en toda su vida, y la única forma de
+darle otro era acordarse de pulsar «Reintentar identificación» y dejar la pasada terminar.
+
+### Añadido
+- **Cada noche se repasa una tanda de los que quedaron sin identificar**, además de los nuevos.
+  Van primero **los que no tienen artista**: ahí la búsqueda por texto no puede hacer nada y la
+  huella acústica es el único camino, así que son los únicos para los que hay algo nuevo que
+  probar. Dentro de cada grupo, el que lleve más tiempo sin que nadie lo mire.
+- **Cadencia de 14 días y tope de 300 por noche.** El tope existe porque cada disco cuesta sus
+  llamadas a MusicBrainz (una por segundo) y hasta cuatro huellas, así que la tanda puede
+  llevarle un buen rato a la pasada nocturna. La cola rota sola: al intentarlo se apunta la
+  fecha y ese disco se va al final.
+- El paso de identificación del refresco dice cuántos de la pasada eran reintentos.
+
+### Arreglado
+- **Un reintento fallido no dejaba rastro.** El apunte de «lo he mirado y no hay manera» solo
+  entraba si el disco venía de recién escaneado, así que al reintentar uno viejo su fecha se
+  quedaba igual y habría vuelto a salir elegido todas las noches. Lo que marcas tú a mano
+  —rareza, bootleg, descartado— sigue sin tocarse.
+
+### Medido contra una biblioteca de verdad (33.516 álbumes)
+De 2.898 sin identificar, **2.891 esperan turno**; la primera tanda son 300 y **los 300 son
+«Artista desconocido»**. Los 528 que no tienen artista quedan cubiertos en **dos noches**, y la
+cola entera da la vuelta en diez.
+
+---
+
+## [1.6.2] - 2026-10-28
+
+**Las rutas de la API ya se pueden probar.** No cambia nada de lo que ves: cambia que ahora hay
+tests que entran por donde entras tú.
+
+### Cambiado
+- **Arrancar el servidor y registrar las rutas dejan de ser lo mismo.** Importar `index.js`
+  abría el puerto, programaba los cuatro cron y lanzaba las limpiezas de una vez, así que no
+  había forma de cargarlo solo para preguntarle cosas. Todo eso vive ahora en `start()`, que
+  solo corre si a ese fichero lo ejecutan como programa.
+- Con eso, de los 131 tests ya hay **10 que prueban rutas de verdad** —antes, ninguno—: la
+  Discoteca y su troceado, los filtros, una ficha que no existe, un cuerpo ilegible y, sobre
+  todo, los **guardarraíles de lo que destruye**: borrar del disco no borra sin confirmación
+  expresa y **se niega en seco si la carpeta está fuera de tu biblioteca** (el test deja un
+  fichero fuera y comprueba que sigue ahí). Igual con restaurar la base y con «ordenar en su
+  carpeta».
+- Esos tests son los que habrían cazado el fallo de paginación de la 1.6.0, que **solo existía
+  pasando por HTTP** —que es donde los parámetros llegan como texto—. Comprobado volviendo a
+  meter el fallo a propósito: la prueba falla.
+
+---
+
+## [1.6.1] - 2026-10-28
+
+**La base recoge sus propios restos.** El esquema no tiene claves ajenas, así que cuando se
+borra un álbum o se fusiona una ficha de artista, SQLite no impide que se queden atrás las
+filas que colgaban de ellos.
+
+### Añadido
+- **Un paso más en «Identificar y sincronizar»** (y por tanto en el refresco nocturno):
+  *Recoger restos sueltos en la base*. Va justo detrás de escanear e identificar —los dos pasos
+  que borran álbumes— y antes de calcular discografías y completismo, que es quien lee si un
+  disco es tuyo.
+- **Es conservador por diseño.** Solo mira filas cuyo padre ya no existe, y **nunca toca tus
+  álbumes ni tus fichas de artista**: si un disco tuyo se queda sin ficha, lo cuenta y lo dice,
+  pero no lo borra. Lo que recoge queda apuntado en Diagnóstico.
+
+### Arreglado
+- **Un disco podía contar como tuyo después de borrarlo.** Si un lanzamiento guardaba el puntero
+  a una copia que ya no está, seguía marcado como «lo tienes»: no aparecía entre lo que te falta
+  y la auto-descarga no volvía a pedirlo nunca. Ahora el puntero se suelta y el disco vuelve a
+  contar como ausente. En la base de pruebas (32.856 álbumes) había 4 así.
+- También recoge pistas, etiquetas, créditos, letras, resúmenes de artista, discografías,
+  seguimientos y novedades que se quedaron sin su ficha; y suelta los punteros de retos y
+  descargas a álbumes borrados, sin borrar la entrada.
+
+---
+
+## [1.6.0] - 2026-10-28
+
+**La Discoteca deja de enseñarte solo los primeros 500.** Con una biblioteca de 27.000 discos,
+eso era el 1,8 % de tu colección: la cabecera decía el total de verdad, pero del resto no había
+forma de llegar.
+
+### Añadido
+- **Más discos al llegar abajo**, de 500 en 500, y un botón «Ver más» que dice cuántos quedan
+  para quien prefiera pedirlos a mano. La cabecera pasa a decir «1000 de 27.102 álbumes», que es
+  lo que de verdad estás viendo.
+
+### Arreglado
+- **Una página traía media biblioteca.** `limit` y `offset` llegan de la URL como texto, y al
+  recortar la lista se sumaban como texto: «500» + 500 daba «500500», así que pedir la segunda
+  página devolvía desde el disco 500 hasta el final —26.602 discos de una tacada—. Nunca se notó
+  porque nadie pedía la segunda página. Ahora hay tests que lo fijan, con los parámetros en
+  texto como llegan de verdad.
+- **Ordenar por título o por artista era 17 veces más lento de lo necesario**: 3,5 segundos con
+  27.000 discos, porque cada comparación construía un comparador de idioma nuevo. Reutilizándolo
+  son 0,2 segundos. Se nota en toda la app, no solo en la Discoteca.
+- **El orden «aleatorio» ya no repite discos** al traer más: antes barajaba otra vez en cada
+  petición, así que la segunda tanda podía volver a traerte lo que ya habías visto. Ahora el
+  barajado es estable mientras dure la visita.
+- Si cambias el filtro mientras una búsqueda anterior sigue en camino, la respuesta tardía ya no
+  pisa a la buena. Con la biblioteca grande una consulta tarda unas décimas, y se notaba.
+
+---
+
+## [1.5.0] - 2026-10-28
+
+**Se acabaron los cuadros del navegador.** Los 103 avisos y confirmaciones de la app pasan a
+ser suyos: avisos flotantes abajo a la derecha y un diálogo propio para las preguntas.
+
+### Cambiado
+- **86 `alert()` → avisos flotantes.** Los del navegador **congelan la pestaña entera** mientras
+  están abiertos —se para hasta el reloj del escaneo—, salen con un «localhost:3861 dice»
+  delante, se apilan de uno en uno y no se parecen en nada al resto de la interfaz. Los nuevos
+  no bloquean nada, se van solos (los errores tardan más en irse), se pueden cerrar a mano y se
+  quedan como mucho cuatro en pantalla.
+- **17 `confirm()` → un diálogo de la app**, con el botón diciendo lo que va a hacer («Borrar del
+  disco», «Reemplazar», «Importar igualmente») en vez de «Aceptar», y **en rojo cuando no tiene
+  vuelta atrás**. Se cancela con Escape o pinchando fuera, y Enter solo confirma si el foco sigue
+  en el botón: no se acepta un borrado sin querer.
+- Los mensajes largos se leen enteros: respetan los saltos de línea y, si no caben, el aviso hace
+  scroll en vez de crecer hasta salirse.
+- Colores con su variante para el **tema claro**, que es donde el rojo pálido sobre blanco no se
+  leía. Medido: todo por encima de 6:1 de contraste en los dos temas.
+
+---
+
+## [1.4.4] - 2026-10-28
+
+**El contenedor ya no tiene por qué correr como root, y la imagen lleva exactamente lo que se
+probó.**
+
+### Añadido
+- **`PUID` y `PGID`**, los mismos nombres que usan las demás *arr. Si los pones en el compose,
+  el contenedor arranca como root, se prepara, y **baja a ese usuario antes de ejecutar la app**:
+  a partir de ahí no tiene privilegios y ni siquiera puede tocar su propio código.
+- Solo cambia de dueño **lo que es suyo** —`liderarrr.db` (y su `-wal`/`-shm`), `img/` y
+  `backups/`—, nunca la carpeta que montas en `/data`: en la estructura recomendada esa carpeta
+  es la raíz de tu música y tus descargas, y un `chown -R` ahí sería largo, ajeno y difícil de
+  deshacer.
+- Y antes de soltar el timón comprueba que ese usuario **puede escribir en `/data` y en la base**.
+  Si no puede, se queda como root y lo dice en el log con el `chown` exacto que lo arregla:
+  mejor eso que arrancar sin poder guardar nada, o morir y dejar el contenedor reiniciándose en
+  bucle.
+
+### Cambiado
+- **`npm ci` en vez de `npm install`** en las dos etapas de construcción de la imagen. `install`
+  puede resolver los rangos `^` por su cuenta; `ci` instala **exactamente** lo que dice
+  `package-lock.json`. Con los parches de ayer recién metidos en el lock, esa diferencia es
+  justo la que hace que la imagen lleve las versiones que se probaron. Comprobado antes de
+  subirlo que `npm ci` funciona con esta estructura de workspaces.
+- Sin `PUID`/`PGID` **no cambia nada**: el contenedor sigue arrancando como root igual que
+  siempre, con un aviso de una línea en el log explicando cómo dejar de hacerlo. Una instalación
+  que ya existe tiene sus ficheros de `/data` creados por root, y cambiarle el usuario por las
+  bravas la dejaría sin poder abrir su propia base.
+
+---
+
+## [1.4.3] - 2026-10-28
+
+**Al día con los parches de seguridad.** De 16 avisos de `npm audit` (3 críticos, 10 altos) a 2,
+y los 2 que quedan no se pueden arreglar sin romper algo peor.
+
+### Cambiado
+- **Fastify 4 → 5**, con `@fastify/static` 7 → 10 y `@fastify/multipart` 8 → 10. El salto de
+  Fastify es lo que permite actualizar los otros dos, que es donde estaban los agujeros de
+  verdad: `@fastify/static` tenía un **salto de autorización por rutas no canónicas y un
+  recorrido de directorios** (la app sirve su propia interfaz, así que cualquiera que llegue al
+  puerto lo tocaba), y `@fastify/busboy` —el que lee las subidas de ficheros— **tres fallos de
+  denegación de servicio e inyección de CRLF**.
+- **music-metadata 10 → 12**: el lector de etiquetas. Su `file-type` se quedaba **en bucle
+  infinito con un ASF (.wma) malformado**, y eso lo come el escaneo de TU biblioteca. Comprobado
+  antes de subirlo que lee igual que antes todo lo que usa el escáner: título, artistas, álbum,
+  número de pista y disco, año, género, sello, los MBID de MusicBrainz, el ReplayGain, el formato
+  y la carátula incrustada; y que la duración sigue saliendo de la cabecera sin leer el fichero
+  entero.
+- Y de arrastre, ya parcheados: `fast-uri` (ocho avisos, varios de falsificación de peticiones),
+  `brace-expansion`, `source-map-js`, `vite` y `shell-quote`.
+
+### Arreglado
+- Un fallo **sin motivo propio y por debajo de 500** ya no dice «Error inesperado en el servidor»:
+  dice «La petición no se pudo atender (403)». Salió al probar lo anterior, porque el servidor de
+  ficheros estáticos rechaza las rutas con «..» con un 403 pelado, y la culpa no era del servidor.
+
+### Sin arreglar (a propósito)
+- `uuid` 8, que entra con `node-taglib-sharp` (el que escribe las etiquetas). Lo que propone npm
+  es **bajar la librería de la 6.0.3 a la 1.0.0**, cinco versiones mayores atrás, lo que se
+  llevaría por delante la escritura de etiquetas. Y el fallo solo aparece al pedir un UUID v3, v5
+  o v6 pasándole un búfer: esa librería solo llama a `v4()`, sin búfer.
+
+---
+
 ## [1.4.2] - 2026-10-28
 
 **Cuando algo falla, la app dice qué ha fallado.** Hasta ahora el aviso en pantalla era, muchas
