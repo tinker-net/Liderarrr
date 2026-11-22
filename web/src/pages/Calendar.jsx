@@ -998,9 +998,9 @@ function SourcePicker({ curators, off, setOff }) {
 }
 
 export default function Calendar() {
-  const [view, setView] = useState('recent');
-  const [format, setFormat] = useState('album');
-  const [edition, setEdition] = useState('all');
+  const [view, setView] = useState('mes');
+  const [format, setFormat] = useState('all');
+  const [edition, setEdition] = useState('new');
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
   const [all, setAll] = useState(false);

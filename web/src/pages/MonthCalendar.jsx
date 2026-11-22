@@ -22,9 +22,8 @@ const KIND = {
   descubre: { label: 'Descubre', dot: '#2dd4bf' },
 };
 const KIND_ORDER = ['upcoming', 'recent', 'label', 'novedad', 'single', 'radar', 'descubre'];
-// qué fuentes van marcadas por defecto: lo tuyo sí; el descubrimiento (artistas que no son
-// tuyos) es opt-in para no llenar el calendario de ruido.
-const DEFAULT_ON = { upcoming: true, recent: true, label: true, novedad: true, single: true, radar: true, descubre: false };
+// Todas las fuentes disponibles salvo las desactivadas por el usuario.
+const DEFAULT_ON = { upcoming: true, recent: true, label: true, novedad: true, single: true, radar: true, descubre: true };
 const SOURCES_KEY = 'liderarrr:calendar:sources';
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -59,7 +58,7 @@ function mergeEvents({ upcoming, recent, labels, radar, novedades, singles, desc
   for (const r of labels || []) add(r.first_release, r.artist, r.title, 'label', { rg_mbid: r.rg_mbid, artist_id: r.artist_id, labels: r.labels, is_owned: r.is_owned });
   for (const r of novedades || []) add(r.release_date, r.artist, r.title, 'novedad', { artist_id: r.artist_id, url: r.url, source: r.source, ahead: r.ahead });
   for (const r of singles || []) add(r.release_date, r.artist, r.title, 'single', { artist_id: r.artist_id, url: r.url, source: r.source, record_type: r.record_type });
-  for (const r of radar || []) add(r.release_date, r.artist, r.title, 'radar', { url: r.url, source: r.source, curator_username: r.curator_username });
+  for (const r of radar || []) add(r.release_date === r.list_date && !r.first_release ? null : r.release_date, r.artist, r.title, 'radar', { url: r.url, source: r.source, curator_username: r.curator_username });
   for (const r of descubre || []) add(r.release_date, r.artist, r.title, 'descubre', { url: r.url, source: r.source, reason: r.reason });
   // primary kind = el de mayor prioridad presente (para el color principal del punto)
   const evs = [...byKey.values()];
