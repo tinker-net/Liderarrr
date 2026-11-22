@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Settings as SettingsIcon, Check, X, Loader2, Download, Upload, FolderSearch, RefreshCw, AlertTriangle, HardDrive, RotateCcw, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { PageTitle, Spinner, Button, ErrorMsg } from '../components.jsx';
+import LibrarySyncSettings from './LibrarySyncSettings.jsx';
 import { aviso, confirmar } from '../avisos.jsx';
 
 // Panel de escaneo: progreso en vivo del recorrido de tus carpetas. Deja ver si
@@ -734,6 +735,7 @@ export default function Settings() {
           <p>Una carpeta por línea si tienes varias. Deben coincidir con el volumen que montaste en Docker.</p>
         </HowTo>
         <ScanPanel />
+        <LibrarySyncSettings />
         <div className="mt-3 border-t border-ink-800 pt-3 flex items-center justify-between gap-3">
           <span className="text-xs text-neutral-500">
             Las carátulas que no están en tus ficheros se descargan de Cover Art Archive / iTunes. Si acabas de
