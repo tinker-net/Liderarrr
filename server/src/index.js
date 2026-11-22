@@ -127,7 +127,7 @@ import { diagnostics, pushEvent } from './diag.js';
 import { updateCheck } from './update.js';
 import { installErrorHandler } from './httperrors.js';
 import * as q from './queries.js';
-import { registerLibrarySync, startLibraryWatcher } from './libsync.js';
+import { registerLibrarySync } from './libsync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
@@ -1011,9 +1011,8 @@ app.get('/api/unidentified', async () => q.unidentified());
 app.get('/api/rarities', async () => q.rarities());
 app.get('/api/bootlegs', async () => q.bootlegs());
 
-// --- listados de calidad (44,1/48 kHz, sin ReplayGain, sin carátula) y sincronización
-// automática de la biblioteca (escanea y quita de la base lo que ya no está en disco).
-registerLibrarySync(app);
+// Listados de calidad y revisión de fichas de álbumes desaparecidos.
+registerLibrarySync(app, { busy: () => refreshStatus.running || autoImportStatus.running });
 
 // marcar estado (rareza/orphan, bootleg, descartar, devolver a pendiente)
 app.post('/api/albums/:id/state', async (req, reply) => {
@@ -1599,12 +1598,9 @@ export async function start({ port = Number(process.env.PORT) || 3861 } = {}) {
     });
   }
 
-  let stopLibraryWatcher;
-  app.addHook('onClose', async () => stopLibraryWatcher?.());
   await app.listen({ port, host: '0.0.0.0' });
   marcarServidorEnMarcha(); // ya no estamos arrancando: un fallo de la base no debe parar esto
   console.log(`[Liderarrr] escuchando en http://0.0.0.0:${port}`);
-  stopLibraryWatcher = startLibraryWatcher({ busy: () => refreshStatus.running || autoImportStatus.running });
   scheduleNightly();
   scheduleAutoImport();
   scheduleWantedWatch();

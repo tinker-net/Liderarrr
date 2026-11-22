@@ -98,9 +98,8 @@ export const api = {
   qualityLists: () => req('/quality/lists'),
   qualityList: (kind, rate) => req(`/quality/list?${new URLSearchParams(rate ? { kind, rate } : { kind })}`),
   librarySyncStatus: () => req('/autosync'),
-  saveLibrarySyncConfig: (body) => req('/autosync/config', { method: 'POST', body }),
   confirmMissingAlbums: (confirmation) =>
-    req('/autosync/run', { method: 'POST', body: { confirmation, scan: false } }),
+    req('/autosync/run', { method: 'POST', body: { confirmation } }),
   duplicates: () => req('/quality/duplicates'),
   unidentified: () => req('/unidentified'),
   rarities: () => req('/rarities'),

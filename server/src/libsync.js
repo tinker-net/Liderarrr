@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, getSetting, setSetting } from './db.js';
 import { splitRoots, isJunkEntry } from './libkey.js';
-import { runScan, scanStatus } from './scanner.js';
+import { scanStatus } from './scanner.js';
 import { matchKey } from './matchkey.js';
 import { isStudioAlbum } from './discography.js';
 import { regroupDiscs } from './discgroup.js';
@@ -15,8 +15,8 @@ import { regroupDiscs } from './discgroup.js';
 //     carátula. Solo LEEN lo que el escáner ya guardó (tracks.sample_rate,
 //     tracks.has_replaygain, albums.cover): nada que reescanear.
 //
-//  2. SINCRONIZACIÓN AUTOMÁTICA — el comportamiento de Lidarr: cada cierto tiempo escanea la
-//     biblioteca (incremental) y, después, quita de la BASE DE DATOS los álbumes cuyos
+//  2. REVISIÓN DE BAJAS — después del escaneo manual o nocturno, quita de la BASE
+//     DE DATOS los álbumes cuyos
 //     ficheros ya no existen. Hasta ahora el escáner solo añadía o actualizaba: un disco
 //     borrado del disco se quedaba para siempre en la base.
 //
@@ -124,8 +124,8 @@ const MAX_COUNT = 25;
 
 export const syncStatus = {
   running: false,
-  phase: 'idle', // idle | scanning | pruning | done | error
-  trigger: null, // auto | manual
+  phase: 'idle', // idle | pruning | done | error
+  trigger: null, // nightly | manual
   startedAt: null,
   finishedAt: null,
   checked: 0,
@@ -134,19 +134,8 @@ export const syncStatus = {
   removedSample: [],
   skippedRoots: [],
   blocked: null, // { count, evaluated, sample } cuando la salvaguarda frena la poda
-  scanError: null,
   error: null,
 };
-
-export function autoSyncConfig() {
-  return {
-    // activo por defecto: es justo lo que se pidió («como Lidarr, sin que yo haga nada»).
-    // Se apaga con auto_sync_enabled = 0.
-    enabled: getSetting('auto_sync_enabled') !== '0',
-    intervalMin: Math.max(5, Number(getSetting('auto_sync_interval_min')) || 60),
-    lastRun: Number(getSetting('auto_sync_last_run') || 0) || null,
-  };
-}
 
 function lastResult() {
   try {
@@ -254,9 +243,10 @@ export async function pruneMissingAlbums({ confirmation = null } = {}) {
     .digest('hex');
   const largeBatch = gone.length > MAX_COUNT ||
     healthy.some((albums) => albums.filter((a) => missing.has(a.id)).length / albums.length > MAX_FRACTION);
-  if (largeBatch && confirmation !== token) {
+  if ((largeBatch || confirmation !== null) && confirmation !== token) {
     out.blocked = {
       confirmation: token,
+      changedSinceConfirmation: confirmation !== null,
       count: gone.length,
       evaluated: candidates.length,
       sample: gone.slice(0, 10).map((a) => `${a.album_artist || '?'} — ${a.title || '?'}`),
@@ -326,22 +316,13 @@ export async function pruneMissingAlbums({ confirmation = null } = {}) {
   return out;
 }
 
-// El ciclo completo: escanear (incremental) y después podar. `scan:false` solo poda
-// (lo usa «Eliminar igualmente», que ya viene de un escaneo reciente).
-let activeSync = null;
-
-export function runAutoSync(options = {}) {
-  if (activeSync) return activeSync;
-  activeSync = performAutoSync(options).finally(() => {
-    activeSync = null;
-  });
-  return activeSync;
-}
-
-async function performAutoSync({ confirmation = null, scan = true, trigger = 'manual', changedDirs } = {}) {
+export async function reviewMissingAlbums({ confirmation = null, trigger = 'manual' } = {}) {
+  if (scanStatus.running || syncStatus.running) {
+    return { removed: 0, blocked: null, skippedRoots: [], error: 'Ya hay una revisión o un escaneo en curso' };
+  }
   Object.assign(syncStatus, {
     running: true,
-    phase: scan ? 'scanning' : 'pruning',
+    phase: 'pruning',
     trigger,
     startedAt: Date.now(),
     finishedAt: null,
@@ -351,33 +332,23 @@ async function performAutoSync({ confirmation = null, scan = true, trigger = 'ma
     removedSample: [],
     skippedRoots: [],
     blocked: null,
-    scanError: null,
     error: null,
   });
   try {
-    if (scan && !scanStatus.running) {
-      await runScan({ changedDirs });
-      syncStatus.scanError = scanStatus.error || null;
-    }
-    syncStatus.phase = 'pruning';
-    // si hay un escaneo en marcha (el de otro proceso: botón, refresco nocturno) no se poda
-    // a la vez; el siguiente ciclo lo hará.
-    if (!scanStatus.running && !syncStatus.scanError) {
-      const r = await pruneMissingAlbums({ confirmation });
-      Object.assign(syncStatus, {
-        checked: r.checked,
-        removed: r.removed,
-        removedTracks: r.tracks,
-        removedSample: r.sample,
-        skippedRoots: r.skippedRoots,
-        blocked: r.blocked,
-      });
-      if (r.removed)
-        console.log(`[autosync] poda: ${r.removed} álbumes (${r.tracks} pistas) ya no están en disco${confirmation ? ' (confirmado)' : ''}`);
-      if (r.blocked)
-        console.warn(`[autosync] poda DETENIDA por seguridad: ${r.blocked.count} de ${r.blocked.evaluated} álbumes parecen desaparecidos`);
-      if (r.skippedRoots.length) console.warn(`[autosync] raíz sin responder, se omite: ${r.skippedRoots.join(', ')}`);
-    }
+    const r = await pruneMissingAlbums({ confirmation });
+    Object.assign(syncStatus, {
+      checked: r.checked,
+      removed: r.removed,
+      removedTracks: r.tracks,
+      removedSample: r.sample,
+      skippedRoots: r.skippedRoots,
+      blocked: r.blocked,
+    });
+    if (r.removed)
+      console.log(`[autosync] poda: ${r.removed} álbumes (${r.tracks} pistas) ya no están en disco${confirmation ? ' (confirmado)' : ''}`);
+    if (r.blocked)
+      console.warn(`[autosync] poda DETENIDA por seguridad: ${r.blocked.count} de ${r.blocked.evaluated} álbumes parecen desaparecidos`);
+    if (r.skippedRoots.length) console.warn(`[autosync] raíz sin responder, se omite: ${r.skippedRoots.join(', ')}`);
     syncStatus.phase = 'done';
   } catch (err) {
     syncStatus.phase = 'error';
@@ -386,7 +357,6 @@ async function performAutoSync({ confirmation = null, scan = true, trigger = 'ma
   } finally {
     syncStatus.running = false;
     syncStatus.finishedAt = Date.now();
-    setSetting('auto_sync_last_run', String(Date.now()));
     // resumen persistente, para que sobreviva a un reinicio (como last_scan)
     setSetting(
       'auto_sync_last',
@@ -399,7 +369,6 @@ async function performAutoSync({ confirmation = null, scan = true, trigger = 'ma
         removedSample: syncStatus.removedSample,
         skippedRoots: syncStatus.skippedRoots,
         blocked: syncStatus.blocked,
-        scanError: syncStatus.scanError,
         error: syncStatus.error,
       })
     );
@@ -407,84 +376,9 @@ async function performAutoSync({ confirmation = null, scan = true, trigger = 'ma
   return syncStatus;
 }
 
-// Agrupa ráfagas de cambios y conserva el escaneo periódico para montajes que
-// no propagan al contenedor los cambios hechos desde otra máquina.
-export function startLibraryWatcher({ busy = () => false, settleMs = 5000 } = {}) {
-  const watchers = new Map();
-  let pending = new Set();
-  let pendingSince = 0;
-  let dueAt = 0;
-  let timer;
-  const startedAt = Date.now();
-
-  function tick() {
-    clearTimeout(timer);
-    const config = autoSyncConfig();
-    const roots = new Set(config.enabled ? splitRoots(getSetting('music_dirs')) : []);
-    for (const [root, watcher] of watchers) {
-      if (roots.has(root)) continue;
-      watcher.close();
-      watchers.delete(root);
-    }
-    if (!roots.size) {
-      pending.clear();
-      pendingSince = 0;
-      return;
-    }
-    for (const root of roots) {
-      if (watchers.has(root)) continue;
-      try {
-        const watcher = fs.watch(root, { recursive: true, persistent: false }, (event, filename) => {
-          if (event === 'change' && filename && !AUDIO_EXT.has(path.extname(filename).toLowerCase())) return;
-          pending.add(filename ? path.dirname(path.resolve(root, filename)) : path.resolve(root));
-          pendingSince ||= Date.now();
-          dueAt = Math.min(Date.now() + settleMs, pendingSince + 60_000);
-          clearTimeout(timer);
-          timer = setTimeout(tick, Math.max(0, dueAt - Date.now())).unref();
-        });
-        watchers.set(root, watcher);
-        watcher.on('close', () => {
-          if (watchers.get(root) === watcher) watchers.delete(root);
-        });
-        watcher.on('error', () => watcher.close());
-      } catch {
-        // Ruta todavía sin montar o un sistema sin vigilancia. Se reintenta en el siguiente tick.
-      }
-    }
-
-    const periodicDue = config.lastRun
-      ? Date.now() >= config.lastRun + config.intervalMin * 60_000
-      : Date.now() >= startedAt + 10 * 60_000;
-    if (pending.size && Date.now() < dueAt) {
-      timer = setTimeout(tick, dueAt - Date.now()).unref();
-      return;
-    }
-    if (!pending.size && !periodicDue) return;
-    if (syncStatus.running || scanStatus.running || busy()) {
-      timer = setTimeout(tick, settleMs).unref();
-      return;
-    }
-
-    const changedDirs = pending;
-    pending = new Set();
-    pendingSince = 0;
-    runAutoSync({ trigger: changedDirs.size ? 'watch' : 'auto', changedDirs })
-      .catch((e) => console.warn('[autosync] ciclo falló:', String(e.message || e)));
-  }
-
-  const polling = setInterval(tick, 60_000).unref();
-  tick();
-  return () => {
-    clearInterval(polling);
-    clearTimeout(timer);
-    for (const watcher of watchers.values()) watcher.close();
-    watchers.clear();
-  };
-}
-
 // ─────────────────────────────────── rutas ───────────────────────────────────
 
-export function registerLibrarySync(app) {
+export function registerLibrarySync(app, { busy = () => false } = {}) {
   app.get('/api/quality/lists', async () => qualityListsSummary());
 
   app.get('/api/quality/list', async (req, reply) => {
@@ -501,26 +395,19 @@ export function registerLibrarySync(app) {
     }
   });
 
-  app.get('/api/autosync', async () => ({ ...autoSyncConfig(), status: syncStatus, last: lastResult() }));
+  app.get('/api/autosync', async () => ({ status: syncStatus, last: lastResult() }));
 
-  app.post('/api/autosync/config', async (req) => {
-    const b = req.body || {};
-    if (typeof b.enabled === 'boolean') setSetting('auto_sync_enabled', b.enabled ? '1' : '0');
-    if (b.intervalMin != null) {
-      const m = Math.round(Number(b.intervalMin));
-      if (Number.isFinite(m)) setSetting('auto_sync_interval_min', String(Math.min(1440, Math.max(5, m))));
+  app.post('/api/autosync/run', async (req, reply) => {
+    if (busy() || scanStatus.running || syncStatus.running) {
+      return reply.code(409).send({ error: 'Espera a que termine la sincronización en curso' });
     }
-    return { ...autoSyncConfig(), status: syncStatus, last: lastResult() };
-  });
-
-  // En segundo plano: un escaneo + poda en una biblioteca grande por red tarda minutos. La
-  // UI sigue el progreso sondeando /api/autosync.
-  app.post('/api/autosync/run', async (req) => {
-    const b = req.body || {};
-    runAutoSync({ confirmation: b.confirmation, scan: b.scan !== false, trigger: 'manual' }).catch((e) =>
-      console.warn('[autosync] ciclo manual falló:', String(e.message || e))
+    const confirmation = req.body?.confirmation;
+    if (typeof confirmation !== 'string' || confirmation !== lastResult()?.blocked?.confirmation) {
+      return reply.code(409).send({ error: 'La confirmación ya no está vigente. Vuelve a revisar las bajas.' });
+    }
+    reviewMissingAlbums({ confirmation }).catch((e) =>
+      console.warn('[autosync] no se pudo confirmar la revisión:', String(e.message || e))
     );
-    return { started: true, status: syncStatus };
+    return { started: true };
   });
-
 }
