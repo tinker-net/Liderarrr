@@ -34,16 +34,22 @@ export default function Quality() {
   if (err) return <ErrorMsg>{err}</ErrorMsg>;
   if (!ov) return <Spinner />;
 
+  const { albumCounts } = ov;
+  const tracks = (n) => `${n.toLocaleString('es-ES')} ${n === 1 ? 'pista' : 'pistas'}`;
+
   return (
     <div>
       <PageTitle icon={HardDrive} title="Calidad y disco" sub="Formatos, metadatos y duplicados" />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Stat label="Pistas sin pérdida" value={ov.lossless.lossless || 0} sub={`de ${ov.lossless.total}`} />
-        <Stat label="Con pérdida" value={ov.lossless.lossy || 0} />
-        <Stat label="Sin ReplayGain" value={ov.noReplaygain} sub="volumen sin normalizar" />
-        <Stat label="Sin carátula" value={ov.noCover} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Álbumes con audio sin pérdida" value={albumCounts.lossless} sub={tracks(albumCounts.losslessTracks)} />
+        <Stat label="Álbumes con audio con pérdida" value={albumCounts.lossy} sub={tracks(albumCounts.lossyTracks)} />
+        <Stat label="Álbumes sin ReplayGain" value={albumCounts.noReplaygain} sub={tracks(albumCounts.noReplaygainTracks)} />
+        <Stat label="Álbumes sin carátula" value={ov.noCover} />
       </div>
+      <p className="mt-2 mb-6 text-xs text-neutral-500">
+        Basta una pista para que el álbum cuente. Si mezcla audio con y sin pérdida, aparece en ambos totales.
+      </p>
 
       <QualityLists />
 
