@@ -1,3 +1,4 @@
+import PersonalAgenda from './PersonalAgenda.jsx';
 import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff, rowSource } from '../sources.js';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -16,7 +17,7 @@ import { aviso } from '../avisos.jsx';
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 const thisYearStart = () => `${new Date().getFullYear()}-01-01`;
 // Las pestañas que existen: lo que venga en ?v= y no esté aquí se ignora.
-const VISTAS = ['mes', 'upcoming', 'recent', 'novedades', 'canciones', 'descubre', 'labels', 'radar', 'quiero'];
+const VISTAS = ['agenda','mes', 'upcoming', 'recent', 'novedades', 'canciones', 'descubre', 'labels', 'radar', 'quiero'];
 
 function ReleaseRow({ r, added, busy, followed, onAdd, onFollow, onSearch, lidarrOn }) {
   const done = added[r.rg_mbid] || r.in_lidarr;
@@ -412,11 +413,17 @@ function RadarRow({ r, onSearch, onFollowMbid, onQueue, lidarrOn }) {
     setState('resolving');
     try {
       const res = await api.radarResolve(r.id);
-      if (!res.artist_mbid) {
+      let mbid = res.artist_mbid;
+      if (!mbid) {
+        const hits = await api.searchArtistMb(r.artist);
+        const exact = hits.filter(a => a.name.toLowerCase() === r.artist.toLowerCase());
+        if (exact.length === 1) mbid = exact[0].mbid;
+      }
+      if (!mbid) {
         setState('notfound');
         return;
       }
-      await onFollowMbid(res.artist_mbid);
+      await onFollowMbid(mbid);
       // Antes el botón volvía a «Seguir» como si no hubiera pasado nada, e invitaba a repetir.
       setSiguiendo(true);
       setState('idle');
@@ -1040,7 +1047,7 @@ export default function Calendar() {
   // no a «Mes».
   const [sp, setSp] = useSearchParams();
   const deUrl = (p) => ({
-    view: VISTAS.includes(p.get('v')) ? p.get('v') : 'mes',
+    view: VISTAS.includes(p.get('v')) ? p.get('v') : 'agenda',
     all: p.get('all') === '1',
     since: /^\d{4}-\d{2}-\d{2}$/.test(p.get('since') || '') ? p.get('since') : thisYearStart(),
   });
@@ -1055,7 +1062,7 @@ export default function Calendar() {
   const propia = useRef(false); // el próximo cambio de URL lo he hecho yo
   useEffect(() => {
     const next = {};
-    if (view !== 'mes') next.v = view;
+    if (view !== 'agenda') next.v = view;
     if (all) next.all = '1';
     if (since !== thisYearStart()) next.since = since;
     if (new URLSearchParams(next).toString() === sp.toString()) return;
@@ -1113,7 +1120,7 @@ export default function Calendar() {
   useEffect(() => {
     setRows(null);
     setErr(null);
-    if (view === 'mes' || view === 'quiero') return undefined; // cargan sus propias fuentes (MonthCalendar / WantedPanel)
+    if (view === 'agenda' || view === 'mes' || view === 'quiero') return undefined; // cargan sus propias fuentes (MonthCalendar / WantedPanel)
     // Todas las pestañas comparten `rows`. Sin esta guardia, una respuesta lenta («todos los
     // artistas», Descubre) llegaba después de cambiar de pestaña y pintaba sus filas en la
     // que estabas mirando.
@@ -1401,6 +1408,7 @@ export default function Calendar() {
       <QuickSearch />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
+        {tab('agenda', 'Mi agenda')}
         {tab('mes', '📅 Mes')}
         {tab('upcoming', 'Próximos')}
         {tab('recent', 'Estrenados recientemente')}
@@ -1462,11 +1470,12 @@ export default function Calendar() {
       </div>
 
       {view !== 'quiero' && <SourcePicker curators={curators} off={srcOff} setOff={setSrcOff} />}
+      {view === 'agenda' && <PersonalAgenda off={srcOff} onRadar={() => setView('radar')} />}
       {view === 'mes' && <MonthCalendar onSearch={setSearch} srcOff={srcOff} />}
 
       {view === 'quiero' && <WantedPanel onSearch={setSearch} />}
 
-      {view !== 'mes' && view !== 'quiero' && (
+      {view !== 'agenda' && view !== 'mes' && view !== 'quiero' && (
         <>
       {view === 'labels' && <LabelManager labels={labels} onChange={loadLabels} />}
       {view === 'radar' && <CuratorManager curators={curators} onChange={reloadRadar} />}

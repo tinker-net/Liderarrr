@@ -268,6 +268,11 @@ CREATE TABLE IF NOT EXISTS album_labels (
 );
 
 -- Artistas que sigues, con faceta (fase 2). Igual que tracked_people de PowaFlex.
+CREATE TABLE IF NOT EXISTS agenda_lidarr_artists (mbid TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS agenda_announcements (
+  artist_id INTEGER NOT NULL, title TEXT NOT NULL COLLATE NOCASE, date TEXT NOT NULL, url TEXT NOT NULL,
+  PRIMARY KEY (artist_id,title)
+);
 CREATE TABLE IF NOT EXISTS tracked_artists (
   artist_id INTEGER NOT NULL,
   facet TEXT NOT NULL DEFAULT 'artist',   -- artist | producer | label

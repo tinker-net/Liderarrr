@@ -133,6 +133,7 @@ import { diagnostics, pushEvent } from './diag.js';
 import { updateCheck } from './update.js';
 import { installErrorHandler } from './httperrors.js';
 import * as q from './queries.js';
+import { registerAgenda } from './personalagenda.js';
 import { registerLibrarySync } from './libsync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -629,9 +630,10 @@ app.post('/api/discography/refresh', async (req) => {
 });
 app.get('/api/discography/status', async () => discographyStatus);
 app.get('/api/discover/gaps', async (req) => gaps({ onlyTracked: req.query?.all !== '1' }));
+registerAgenda(app);
 app.get('/api/discover/upcoming', async (req) => upcoming({ onlyTracked: req.query?.all !== '1' }));
 app.get('/api/discover/recent', async (req) =>
-  recentlyReleased({ since: req.query?.since || null, onlyTracked: req.query?.all === '1' })
+  recentlyReleased({ since: req.query?.since || null, onlyTracked: req.query?.all !== '1' })
 );
 app.get('/api/discover/dismissed', async () => dismissedList());
 app.post('/api/discover/dismiss', async (req) => dismissGap(req.body?.rg_mbid, req.body?.title));

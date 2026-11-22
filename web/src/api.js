@@ -181,6 +181,8 @@ export const api = {
   lidarrEnabled: () => req('/lidarr/enabled'),
 
   // fase 2 — la caza
+  personalAgenda: () => req('/agenda'),
+  addAnnouncement: (body) => req('/agenda/announcement', {method:'POST',body}),
   tracked: () => req('/tracked'),
   suggestions: () => req('/tracked/suggestions'),
   follow: (id, facet) => req(`/tracked/${id}`, { method: 'POST', body: { facet } }),
