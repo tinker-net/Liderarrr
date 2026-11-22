@@ -9,6 +9,86 @@ import { PageTitle } from '../components.jsx';
 
 const RELEASES = [
   {
+    version: '1.9.3',
+    title: 'Un disco que ya tienes en FLAC no es un candidato a upgrade',
+    items: [
+      '«Candidatos a upgrade» miraba cada copia por separado: una copia en MP3 salía como candidata aunque tuvieras ese mismo disco en FLAC en otra carpeta.',
+      'Ahora la lista solo propone lo que solo tienes con pérdida. Las copias con pérdida de discos que ya tienes sin pérdida van aparte, al final, con un enlace a «la copia buena».',
+      'Tener solo una parte sin pérdida (un volumen de una caja) no cubre el disco entero: sigue siendo candidato y la fila lo dice.',
+    ],
+  },
+  {
+    version: '1.9.2',
+    title: '«¿Qué álbumes son?», agrupado por lo que importa',
+    items: [
+      'Las listas de Calidad y disco se agrupaban por frecuencia de muestreo exacta: trece pestañas, con «44,1 kHz» conteniendo casi toda la biblioteca y frecuencias con un solo álbum.',
+      'Ahora son cinco, por lo que importa: Alta resolución (más de 16 bits o más de 48 kHz, sin pérdida), Por debajo de CD, Mezclan frecuencias, Sin ReplayGain y Sin imagen en la carpeta.',
+      'La frecuencia exacta pasa a ser un filtro dentro de cada lista y un dato de cada fila («24 bits · 96 kHz»).',
+    ],
+  },
+  {
+    version: '1.9.1',
+    title: '«¿Qué álbumes son?», al final de Calidad y disco',
+    items: [
+      'En Calidad y disco, el bloque «¿Qué álbumes son?» pasa al final de la página: es la lista larga, y formatos, álbumes más pesados y duplicados van antes.',
+    ],
+  },
+  {
+    version: '1.9.0',
+    title: 'Tres cosas traídas del fork de tinker-net',
+    items: [
+      'Tres cosas traídas del fork de tinker-net (github.com/tinker-net/Liderarrr), portadas a mano y con sus tests. Gracias.',
+      '¿Qué álbumes son? Calidad y disco daba los totales y ahora da los nombres: qué álbumes están a 44,1 kHz, a 48 kHz o a otra frecuencia, cuáles tienen pistas sin ReplayGain y cuáles no tienen imagen en su carpeta. Con buscador y botón para copiar la lista.',
+      'Las tarjetas de Calidad cuentan álbumes, con las pistas debajo.',
+      'La carátula ya no tiene que llamarse «cover»: vale cualquier imagen de la carpeta. Se aplica sola en el próximo escaneo.',
+      'Carpetas que ya no están, más fino: un fallo de permisos o de red ya no cuenta como «desaparecido», se detecta la carpeta que se quedó sin audio, y al quitar una ficha la discografía pasa a la otra copia del disco si la hay.',
+    ],
+  },
+  {
+    version: '1.8.2',
+    title: 'Identificadores de MusicBrainz que no lo eran',
+    items: [
+      'Había artistas con un «MBID» que no lo era: dos identificadores pegados (una colaboración), un número de Discogs o un id de Spotify, copiados de las etiquetas tal cual. MusicBrainz los rechazaba en cada refresco y ese artista se quedaba sin discografía.',
+      'Ahora de las etiquetas solo se acepta un identificador de MusicBrainz de verdad, y al arrancar se limpian los que ya estaban mal guardados. La ficha y sus discos no cambian.',
+    ],
+  },
+  {
+    version: '1.8.1',
+    title: 'Flecos del repaso',
+    items: [
+      '«Exportar base de datos» entrega una instantánea, como las copias de seguridad: antes mandaba el fichero en uso y podía salir a medio escribir.',
+      'Una etiqueta con «.» o «..» ya no puede sacar un disco de su carpeta al importarlo, ni crear una carpeta oculta que el escáner no vería.',
+      '«Mover todos» exige en el servidor la misma confirmación que mover una carpeta, y de las copias que deja cada restauración se conservan solo las tres últimas.',
+    ],
+  },
+  {
+    version: '1.8.0',
+    title: 'Repaso a fondo de la interfaz, y cuatro tareas de mantenimiento nuevas',
+    items: [
+      'La otra mitad del repaso: la interfaz. Las 25 páginas se recorrieron sobre una copia de una base real, en tema claro y en móvil, midiendo contraste y desbordes.',
+      'Nuevo: carátulas de antemano. Tres de cada cuatro discos no tienen imagen en su carpeta y la carátula se resolvía la primera vez que los abrías; ahora se van dejando listas cada noche, y en Calidad y disco puedes adelantar una tanda.',
+      'Nuevo: carpetas que ya no están. Si mueves o renombras una carpeta con otra herramienta, el disco viejo se quedaba contando como tuyo. Ahora aparece en Calidad y disco y lo quitas tú (solo la ficha, ningún fichero).',
+      'Nuevo: Artistas avisa cuando un nombre tiene dos fichas con los discos repartidos, y las funde con un clic. Y una descarga pedida que no llega en 14 días deja de bloquear que se vuelva a pedir.',
+      'El tema claro se lee: los textos de color estaban pensados para fondo oscuro y sobre blanco no llegaban a 3:1. De paso, el dorado de botones y pestañas activas no generaba ningún estilo; ahora sí.',
+      'En el móvil ya no se sale nada de la pantalla, y las listas largas cargan por tandas: Artistas pintaba 5.000 fichas de golpe y Sin identificar tardaba 6,5 segundos en dejarse tocar.',
+      'La app recuerda dónde estabas: la Discoteca vuelve a la misma altura, y Lanzamientos, Géneros, Sellos, Retos y Artistas guardan pestaña y filtros.',
+      'En los diálogos de borrar el foco empieza en «Cancelar» (antes Enter confirmaba), Ajustes guarda solo lo que cambias, y muchos botones que callaban al fallar ahora lo dicen.',
+    ],
+  },
+  {
+    version: '1.7.4',
+    title: 'Repaso a fondo: lo que podía estropear tus datos o cansar a los trackers',
+    items: [
+      'Repaso a fondo del servidor, hecho pasando la app entera por una copia de una base real y leyendo el código en busca de lo que puede dañar datos.',
+      'Trackers: la auto-descarga tenía un tope que contaba descargas y no búsquedas, así que un disco sin release se buscaba todas las noches sin contar. Ahora el tope cuenta discos buscados y lo que no dio nada no se reintenta hasta pasados 3 días. Lidarr pasa por el mismo freno que Prowlarr y Jackett.',
+      'Importación: un pedido registrado sin artista ya no manda el disco a «Artista desconocido»; si las etiquetas no lo dicen, se saca del nombre de la carpeta. No se mezclan dos copias en una carpeta, y una importación a medias no se da por hecha.',
+      'Reescanear una carpeta borraba las letras de ese disco: ya no. Y escribir etiquetas no puede romper lo que siembras, porque el fichero se separa antes de la descarga.',
+      'Los títulos en otro alfabeto o de solo símbolos («Корвет», «>>>>») se confundían entre sí: tener uno contaba como tener los demás.',
+      'Guardar Ajustes ya no puede rebobinar el estado interno (una pestaña vieja podía repetir el refresco nocturno). Las credenciales que estaban en claro se cifran al arrancar, y el token de Spotify ya no sale por la API.',
+      '«Probar AcoustID» comprueba la clave de verdad, y «Enviar prueba» ya no dice «enviada» sin webhook.',
+    ],
+  },
+  {
     version: '1.7.3',
     title: '«Probar Prowlarr» te dice qué indexer está callado',
     items: [

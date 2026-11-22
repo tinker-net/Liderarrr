@@ -15,7 +15,13 @@ import {
   setSetting,
   stageDatabaseImport,
   marcarServidorEnMarcha,
+  SECRET_SETTING_KEYS,
+  esAjusteInterno,
 } from './db.js';
+import { discosDesaparecidos, olvidarDisco, olvidarTodos, marcarDesaparecidos } from './missing.js';
+import { limpiarMbidInvalidos } from './mbid.js';
+import { registerQualityLists } from './qualitylists.js';
+import { warmCovers, coverWarmStatus, coversPendientes } from './covers.js';
 import { runScan, scanStatus, purgeJunkFromDb } from './scanner.js';
 import { purgeVariousArtists } from './various.js';
 import { regroupDiscs, combineAlbums, uncombineAlbum, combineCandidates, boxInfo, identifyBox } from './discgroup.js';
@@ -157,13 +163,16 @@ if (process.env.LIDERARRR_AUTH) {
   app.addHook('onRequest', async (req, reply) => {
     if (AUTH_OPEN_PATHS.has((req.raw.url || '').split('?')[0])) return;
     const ip = req.ip || 'desconocida';
-    if (crypto.timingSafeEqual(digest(req.headers.authorization), expected)) {
-      fails.delete(ip);
-      return;
-    }
+    // El bloqueo va ANTES de mirar la contraseña. Al revés, una contraseña correcta seguía
+    // entrando con el bloqueo puesto: 429 o 200 decían si habías acertado y se podía
+    // probar sin límite.
     if (tooManyFails(ip)) {
       reply.header('Retry-After', '300');
       return reply.code(429).send({ error: 'Demasiados intentos, prueba en unos minutos' });
+    }
+    if (crypto.timingSafeEqual(digest(req.headers.authorization), expected)) {
+      fails.delete(ip);
+      return;
     }
     fails.set(ip, [...(fails.get(ip) || []), Date.now()]);
     reply.header('WWW-Authenticate', 'Basic realm="Liderarrr", charset="UTF-8"');
@@ -198,11 +207,14 @@ app.get('/api/update-check', async () => updateCheck());
 app.get('/api/diag', async () => ({ ...diagnostics(), space: estadoEspacio() }));
 
 // --- ajustes ----------------------------------------------------------------
-const SECRET_KEYS = new Set(['lidarr_key', 'prowlarr_key', 'jackett_key', 'qbittorrent_pass', 'lastfm_key', 'lastfm_secret', 'acoustid_key', 'discogs_token', 'plex_token', 'spotify_client_secret', 'notify_url', 'listenbrainz_token']);
+// Una sola lista de qué es secreto: la de db.js. Había dos y no coincidían, así que el
+// token de Spotify salía por GET /api/settings.
+const SECRET_KEYS = SECRET_SETTING_KEYS;
 app.get('/api/settings', async () => {
   const raw = getAllSettings();
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
+    if (k === 'auto_grab_tried') continue; // memoria interna de la auto-descarga
     // no devolvemos secretos en claro: solo si están puestos
     out[k] = SECRET_KEYS.has(k) ? (v ? '••••••••' : '') : v;
   }
@@ -213,6 +225,7 @@ app.put('/api/settings', async (req) => {
   const body = req.body || {};
   for (const [k, v] of Object.entries(body)) {
     if (SECRET_KEYS.has(k) && v === '••••••••') continue; // no sobrescribas con el placeholder
+    if (esAjusteInterno(k)) continue; // estado de la app, no un ajuste: no se pisa desde fuera
     setSetting(k, v === '' ? null : v);
   }
   return { ok: true };
@@ -358,6 +371,15 @@ app.get('/api/artists/:id', async (req, reply) => {
 });
 app.post('/api/artists/:id/scope', async (req) => q.setArtistScope(Number(req.params.id), req.body?.scope));
 app.get('/api/artists/names', async () => q.artistNames());
+// fichas de artista con el mismo nombre, y fundir una en otra
+app.get('/api/artists/duplicates', async () => q.duplicateArtists());
+app.post('/api/artists/merge', async (req, reply) => {
+  try {
+    return q.mergeArtists(Number(req.body?.from), Number(req.body?.into), { confirm: req.body?.confirm === true });
+  } catch (err) {
+    return reply.code(400).send({ error: String(err.message || err) });
+  }
+});
 app.put('/api/albums/:id/artist', async (req, reply) => {
   try {
     return q.setAlbumArtist(Number(req.params.id), req.body?.name);
@@ -421,6 +443,8 @@ app.put('/api/albums/:id/title', async (req, reply) => {
 app.get('/api/corrections', async () => correctedAlbums());
 app.post('/api/corrections/refile-all', async (req, reply) => {
   try {
+    // mueve carpetas en disco: exige la misma confirmación expresa que mover una sola
+    if (req.body?.confirm !== true) throw new Error('Movimiento no confirmado');
     return refileAll();
   } catch (err) {
     return reply.code(400).send({ error: String(err.message || err) });
@@ -566,11 +590,14 @@ app.post('/api/spotify/library/save', async (req, reply) => {
 // Callback OAuth para quien sirva Liderarr por HTTPS y registre ESTA ruta como redirect: si
 // llega el code, se completa solo. En el flujo por defecto (loopback 127.0.0.1) nadie sirve
 // esto y el usuario pega el code a mano; da igual.
+// El texto que se pinta en /callback sale en parte de la URL (?error=…): se escapa.
+const escHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 app.get('/callback', async (req, reply) => {
   const code = req.query?.code;
   const page = (msg, ok) =>
     reply.type('text/html').send(
-      `<!doctype html><meta charset=utf-8><title>Liderarrr · Spotify</title><body style="font-family:system-ui;background:#14141a;color:#eee;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center;max-width:420px;padding:24px"><h2 style="color:${ok ? '#4ade80' : '#f87171'}">${msg}</h2><p style="color:#999">Ya puedes cerrar esta pestaña y volver a Liderarrr.</p></div></body>`
+      `<!doctype html><meta charset=utf-8><title>Liderarrr · Spotify</title><body style="font-family:system-ui;background:#14141a;color:#eee;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center;max-width:420px;padding:24px"><h2 style="color:${ok ? '#4ade80' : '#f87171'}">${escHtml(msg)}</h2><p style="color:#999">Ya puedes cerrar esta pestaña y volver a Liderarrr.</p></div></body>`
     );
   // reconstruye la query (code o error) para que spotifyConnect dé el mensaje adecuado
   const qs = Object.entries(req.query || {})
@@ -1023,7 +1050,27 @@ app.post('/api/albums/:id/state', async (req, reply) => {
   }
 });
 // papelera: listar descartados y restaurar uno (deshacer un "Descartar")
+// qué álbumes son: por frecuencia de muestreo, sin ReplayGain, sin imagen en la carpeta
+registerQualityLists(app);
+
 app.get('/api/dismissed', async () => q.dismissedAlbums());
+// discos cuya carpeta ya no está: listarlos, volver a mirar y quitarlos de la app (solo filas)
+app.get('/api/missing', async () => discosDesaparecidos());
+app.post('/api/missing/check', async () => marcarDesaparecidos());
+app.post('/api/missing/forget-all', async (req, reply) => {
+  try {
+    return olvidarTodos({ confirm: req.body?.confirm === true });
+  } catch (err) {
+    return reply.code(400).send({ error: String(err.message || err) });
+  }
+});
+app.post('/api/missing/:id/forget', async (req, reply) => {
+  try {
+    return olvidarDisco(Number(req.params.id), { confirm: req.body?.confirm === true });
+  } catch (err) {
+    return reply.code(400).send({ error: String(err.message || err) });
+  }
+});
 app.post('/api/albums/:id/restore', async (req, reply) => {
   try {
     return restoreAlbum(Number(req.params.id));
@@ -1371,6 +1418,17 @@ app.get('/api/cover/:id', async (req, reply) => {
 
 // vuelve a intentar las carátulas que no se encontraron (útil tras identificar)
 app.post('/api/covers/retry-missing', async () => ({ retried: retryMissingCovers() }));
+// dejar listas de antemano las carátulas que faltan (por tandas, en segundo plano)
+app.get('/api/covers/warm', async () => ({ ...coverWarmStatus, pendientes: coverWarmStatus.running ? null : coversPendientes().length }));
+app.post('/api/covers/warm', async (req) => {
+  const limit = Math.min(Math.max(Number(req.body?.limit) || 500, 1), 5000);
+  warmCovers({ limit }).catch((e) => console.error('caratulas', e));
+  return { started: true, limit };
+});
+app.post('/api/covers/warm/cancel', async () => {
+  coverWarmStatus.cancel = true;
+  return { ok: true };
+});
 
 // --- fotos de artista (Deezer + manual), en paralelo a las carátulas -----------
 app.get('/api/artist/:id/photo', async (req, reply) => {
@@ -1420,16 +1478,28 @@ app.post('/api/cover/:id/apply', async (req, reply) => {
 
 // --- copia de seguridad -----------------------------------------------------
 app.get('/api/backup/database', async (req, reply) => {
-  // Vuelca el WAL al fichero principal antes de descargarlo, para que la copia incluya
-  // las escrituras recientes (en modo WAL podrían estar solo en el sidecar -wal).
-  try {
-    db.pragma('wal_checkpoint(TRUNCATE)');
-  } catch {
-    /* si falla el checkpoint, se descarga igual lo que haya en el fichero principal */
-  }
   reply.header('Content-Disposition', 'attachment; filename="liderarrr.db"');
   reply.header('Content-Type', 'application/octet-stream');
-  return reply.send(fs.createReadStream(DB_PATH));
+  // Se exporta una INSTANTÁNEA (VACUUM INTO, como las copias de seguridad), no el fichero
+  // vivo: si un escaneo o el refresco nocturno escribían durante la descarga, lo que te
+  // llevabas podía salir a medio escribir. El temporal se borra al terminar de enviarse.
+  const tmp = path.join(DATA_DIR, `exportar-${Date.now()}.db`);
+  try {
+    db.prepare('VACUUM INTO ?').run(tmp);
+    const flujo = fs.createReadStream(tmp);
+    flujo.on('close', () => fs.rm(tmp, { force: true }, () => {}));
+    return reply.send(flujo);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    // sin sitio para la instantánea: se manda el fichero principal, como antes
+    console.warn('[exportar] sin instantánea, se envía el fichero vivo:', String(e.message || e));
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch {
+      /* se descarga igual lo que haya en el fichero principal */
+    }
+    return reply.send(fs.createReadStream(DB_PATH));
+  }
 });
 
 // Restaurar/importar la base de datos: sube un .db (el que exportaste) y reemplaza la
@@ -1617,6 +1687,16 @@ export async function start({ port = Number(process.env.PORT) || 3861 } = {}) {
       resumeAddQueue(); // reanuda una tanda de envío a Lidarr que quedara a medias
     } catch (e) {
       console.warn('[lidarr] no se pudo reanudar la cola:', String(e.message || e));
+    }
+    // MBID que no lo son (dos pegados, un número de Discogs, un id de Spotify): se quitan en
+    // cada arranque. Es barato y un reescaneo forzado de ficheros viejos no los vuelve a colar,
+    // pero una base restaurada de una copia antigua sí puede traerlos.
+    try {
+      const r = limpiarMbidInvalidos(db);
+      if (r.artistas || r.albumes || r.pistas)
+        console.log(`[mbid] identificadores que no eran de MusicBrainz, fuera: ${r.artistas} artistas · ${r.albumes} álbumes · ${r.pistas} pistas`);
+    } catch (e) {
+      console.warn('[mbid] limpieza de identificadores falló:', String(e.message || e));
     }
     // limpieza ÚNICA de los ocultos que se escanearon antes de que existiera el filtro
     // (pistas `._loquesea.flac` de Mac). Solo filas: no toca el disco.

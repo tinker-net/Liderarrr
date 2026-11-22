@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { db, getSetting, setSetting } from './db.js';
 import { albumKey, splitRoots, isJunkLabel, isJunkEntry, pathSegments } from './libkey.js';
+import { unMbid } from './mbid.js';
 import { regroupDiscs } from './discgroup.js';
 
 // Raíces de la biblioteca para CALCULAR la identidad de cada álbum (clave relativa
@@ -26,7 +27,6 @@ const AUDIO_EXT = new Set([
   '.flac', '.mp3', '.m4a', '.aac', '.ogg', '.opus', '.oga', '.wav', '.wv', '.ape',
   '.alac', '.aiff', '.aif', '.dsf', '.dff', '.mpc', '.tak', '.tta', '.wma',
 ]);
-const COVER_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const COVER_NAMES = ['cover', 'folder', 'front', 'albumart', 'album'];
 
 export const scanStatus = {
@@ -43,7 +43,8 @@ export const scanStatus = {
   error: null,
 };
 
-const isAudio = (f) => AUDIO_EXT.has(path.extname(f).toLowerCase());
+export const isAudio = (f) => AUDIO_EXT.has(path.extname(f).toLowerCase());
+const COVER_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const isLossless = (fmt) => /flac|alac|wav|ape|wavpack|aiff|pcm/i.test(fmt || '');
 // music-metadata devuelve varios MBID como ARRAY (álbumes con varios artistas).
 // Nos quedamos con el primero: pasar un array a una consulta de un solo hueco
@@ -72,20 +73,24 @@ async function scanTree(dir, onFolder) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) subdirs.push(full);
     else if (e.isFile() && isAudio(e.name)) files.push(full);
-    else if (e.isFile() && COVER_EXTENSIONS.has(path.extname(e.name).toLowerCase())) images.push(e.name);
+    else if (e.isFile() && COVER_EXT.has(path.extname(e.name).toLowerCase())) images.push(e.name);
   }
   if (files.length) await onFolder({ dir, files, cover: findCover(dir, images) });
   for (const sd of subdirs) await scanTree(sd, onFolder);
 }
 
-function findCover(dir, images) {
-  const names = images.sort();
-  const preferred = names.find((name) => {
-    const stem = name.slice(0, -path.extname(name).length).toLowerCase();
-    return COVER_NAMES.some((candidate) => stem.includes(candidate));
+// La carátula de una carpeta: la imagen que se llame «cover», «folder», «front»… y, si no
+// hay ninguna con esos nombres, la primera que haya. Antes solo valían esos nombres, así
+// que un disco con «scan.jpg» o «portada.png» contaba como sin imagen. `images` son los
+// nombres que scanTree ya listó (sin ocultos ni basura): no se vuelve a leer la carpeta.
+export function findCover(dir, images) {
+  const nombres = [...images].sort((a, b) => a.localeCompare(b));
+  const preferida = nombres.find((n) => {
+    const base = path.basename(n, path.extname(n)).toLowerCase();
+    return COVER_NAMES.some((c) => base.includes(c));
   });
-  const selected = preferred ?? names[0];
-  return selected ? path.join(dir, selected) : null;
+  const elegida = preferida ?? nombres[0];
+  return elegida ? path.join(dir, elegida) : null;
 }
 
 const upsertArtist = db.prepare(
@@ -130,6 +135,31 @@ ON CONFLICT(local_key) DO UPDATE SET
 `);
 const getAlbumId = db.prepare('SELECT id FROM albums WHERE local_key = ?');
 const clearTracks = db.prepare('DELETE FROM tracks WHERE album_id = ?');
+// Lo que cuelga de una pista y hay que conservar al reescanear su carpeta. Las pistas se
+// borran y se vuelven a insertar con un id NUEVO; las letras van por id de pista, así que
+// se quedaban sueltas y la limpieza nocturna las borraba. Bastaba con guardar una
+// carátula o un .lrc (cambia la fecha de la carpeta) para perder las letras del disco.
+const pistasDe = db.prepare(
+  'SELECT t.id, t.path, t.size_bytes, t.acoustid, (SELECT 1 FROM lyrics l WHERE l.track_id = t.id) AS con_letra FROM tracks t WHERE t.album_id = ?'
+);
+const pistasNuevas = db.prepare('SELECT id, path, size_bytes FROM tracks WHERE album_id = ?');
+const moverLetra = db.prepare('UPDATE lyrics SET track_id = ? WHERE track_id = ?');
+const ponerHuella = db.prepare('UPDATE tracks SET acoustid = ? WHERE id = ? AND acoustid IS NULL');
+// Sustituye las pistas de un álbum sin perder letras ni huellas: se casan por ruta.
+export const reemplazarPistas = db.transaction((albumId, rows) => {
+  const antes = pistasDe.all(albumId).filter((t) => t.con_letra || t.acoustid);
+  clearTracks.run(albumId);
+  insertTracksTx(albumId, rows);
+  if (!antes.length) return;
+  const porRuta = new Map(pistasNuevas.all(albumId).map((t) => [t.path, t]));
+  for (const v of antes) {
+    const n = porRuta.get(v.path);
+    if (!n) continue; // el fichero ya no está: su letra sí es huérfana de verdad
+    if (v.con_letra) moverLetra.run(n.id, v.id);
+    // la huella solo vale si es el mismo fichero (mismo tamaño), no otro con el mismo nombre
+    if (v.acoustid && v.size_bytes === n.size_bytes) ponerHuella.run(v.acoustid, n.id);
+  }
+});
 const insertTrack = db.prepare(`
 INSERT INTO tracks (album_id, disc, num, title, artist, duration_ms, path, format, codec,
   bitrate, sample_rate, bit_depth, channels, size_bytes, lossless, has_replaygain, mb_recording_id)
@@ -211,7 +241,7 @@ async function ingestFolder({ dir, files, cover }) {
       size_bytes: size,
       lossless: f.lossless || isLossless(f.codec || fmt) ? 1 : 0,
       has_replaygain: c.replaygain_track_gain != null || c.replaygain_album_gain != null ? 1 : 0,
-      mb_recording_id: first(c.musicbrainz_recordingid),
+      mb_recording_id: unMbid(c.musicbrainz_recordingid),
     });
 
     // metadatos de álbum: se toman del primer fichero que los tenga. Los MBID se
@@ -220,9 +250,10 @@ async function ingestFolder({ dir, files, cover }) {
     albumMeta.albumArtist ||= c.albumartist || c.artist;
     albumMeta.artist ||= c.artist;
     albumMeta.year ||= c.year || (c.date ? Number(String(c.date).slice(0, 4)) : null);
-    albumMeta.rgMbid ||= first(c.musicbrainz_releasegroupid);
-    albumMeta.relMbid ||= first(c.musicbrainz_albumid);
-    albumMeta.artistMbid ||= first(c.musicbrainz_albumartistid) || first(c.musicbrainz_artistid);
+    // unMbid: lo de las etiquetas solo vale si es un MBID de verdad (ver mbid.js)
+    albumMeta.rgMbid ||= unMbid(c.musicbrainz_releasegroupid);
+    albumMeta.relMbid ||= unMbid(c.musicbrainz_albumid);
+    albumMeta.artistMbid ||= unMbid(c.musicbrainz_albumartistid) || unMbid(c.musicbrainz_artistid);
     albumMeta.totalTracks ||= c.track?.of || null;
     if ((c.disk?.of || 1) > albumMeta.discs) albumMeta.discs = c.disk.of;
   }
@@ -272,12 +303,11 @@ async function ingestFolder({ dir, files, cover }) {
     duration_ms: Math.round(totalDur),
     added_at: Math.round(stat.mtimeMs),
     scanned_at: Date.now(),
-    cover,
+    cover: cover || null,
   });
 
   const albumId = getAlbumId.get(localKey).id;
-  clearTracks.run(albumId);
-  insertTracksTx(albumId, tracks);
+  reemplazarPistas(albumId, tracks);
 
   for (const g of genres) {
     insertGenre.run(g);
@@ -298,7 +328,9 @@ async function ingestFolder({ dir, files, cover }) {
 const scannedAtOf = db.prepare('SELECT id, scanned_at, path, cover FROM albums WHERE local_key = ?');
 // si la carpeta se saltó pero su ruta cambió (p. ej. tras cambiar el montaje a /data),
 // se actualiza la ruta sin re-ingerir: identidad intacta, ruta al día.
-const fixAlbumPath = db.prepare('UPDATE albums SET path = ?, cover = ? WHERE id = ?');
+// …y la carátula: una carpeta que no ha cambiado se salta, así que sin esto un disco cuya
+// imagen no se reconocía antes (no se llamaba «cover») se quedaría sin ella para siempre.
+const fixAlbumPath = db.prepare('UPDATE albums SET path = ?, cover = COALESCE(cover, ?) WHERE id = ?');
 
 // Recorre la biblioteca. `opts.roots` sobrescribe music_dirs; `opts.force` reescanea
 // TODO (ignora el salto incremental).
@@ -343,9 +375,7 @@ export async function runScan(opts = {}) {
         if (mtime && mtime <= existing.scanned_at) {
           // misma identidad y sin cambios: se salta. Pero si la ruta cambió (montaje
           // nuevo), se actualiza para que carátulas y rutas apunten al sitio real.
-          if (existing.path !== folder.dir || (!existing.cover && folder.cover)) {
-            fixAlbumPath.run(folder.dir, folder.cover, existing.id);
-          }
+          if (existing.path !== folder.dir || (!existing.cover && folder.cover)) fixAlbumPath.run(folder.dir, folder.cover || null, existing.id);
           scanStatus.skipped++;
           return;
         }
@@ -372,6 +402,13 @@ export async function runScan(opts = {}) {
       await scanTree(root, handleFolder);
     }
     scanStatus.phase = 'done';
+    // con el escaneo entero y sin error, se mira qué discos de la base ya no tienen carpeta
+    try {
+      const { marcarDesaparecidos } = await import('./missing.js');
+      marcarDesaparecidos();
+    } catch (e) {
+      console.warn('[desaparecidos] no se pudo comprobar:', String(e.message || e));
+    }
     console.log(`[scan] fin: ${scanStatus.foldersFound} carpetas · ${scanStatus.albumsDone} nuevas · ${scanStatus.skipped} sin cambios · ${scanStatus.errors} errores`);
   } catch (err) {
     scanStatus.phase = 'error';

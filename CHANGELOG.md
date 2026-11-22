@@ -7,6 +7,241 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/).
 
 ---
 
+## [1.9.3] - 2026-11-22
+
+**«Candidatos a upgrade» miraba cada copia por separado.** Una copia en MP3 salía como
+candidata aunque tuvieras ese mismo disco en FLAC en otra carpeta: «69 Love Songs» en MP3, con
+cinco copias en FLAC al lado. Pedir su upgrade era descargar lo que ya tienes.
+
+### Arreglado
+- La lista solo propone los discos que **solo** tienes con pérdida. «El mismo disco» es el
+  mismo lanzamiento de MusicBrainz o, si no está identificado, mismo artista y mismo título.
+- Las copias con pérdida de discos que ya tienes sin pérdida van **aparte, al final**, como
+  copias que sobran, cada una con un enlace a «la copia buena» para comprobarlo antes de
+  descartarla.
+- Tener solo **una parte** sin pérdida (un volumen de una caja) no cubre el disco entero: sigue
+  siendo candidato, y la fila lo dice.
+- Una copia sin pérdida que está en la Papelera no cuenta como tenerlo.
+
+---
+
+## [1.9.2] - 2026-11-22
+
+**Las listas de calidad se agrupaban por frecuencia de muestreo exacta, y eso no decía nada.**
+Con una biblioteca real salían trece pestañas: «44,1 kHz» con casi todos los discos (es la
+norma, no una lista), frecuencias con un solo álbum, y la profundidad de bits sin mirar.
+
+### Cambiado
+- Las pestañas de *Calidad y disco → ¿Qué álbumes son?* pasan a ser cinco:
+  - **Alta resolución:** sin pérdida a más de 16 bits o a más de 48 kHz. Un disco a 24 bits y
+    44,1 kHz también lo es, y antes quedaba escondido entre los de «44,1 kHz».
+  - **Por debajo de CD:** alguna pista a menos de 44,1 kHz. Los más claros de sustituir.
+  - **Mezclan frecuencias:** pistas a distinta frecuencia dentro del mismo disco.
+  - **Sin ReplayGain** y **Sin imagen en la carpeta**, como estaban.
+- La frecuencia exacta es ahora un **filtro dentro de cada lista** (y un dato de cada fila:
+  «24 bits · 96 kHz»), no una pestaña.
+- La calidad CD no tiene lista (es casi todo), y lo que tiene pérdida ya tiene su página en
+  *Candidatos a upgrade*.
+
+---
+
+## [1.9.1] - 2026-11-22
+
+### Cambiado
+- En *Calidad y disco*, el bloque **«¿Qué álbumes son?»** pasa al final de la página. Es la
+  lista larga; formatos, álbumes más pesados y duplicados se ven de un vistazo y van antes.
+
+---
+
+## [1.9.0] - 2026-11-22
+
+**Tres cosas traídas del fork de [tinker-net](https://github.com/tinker-net/Liderarrr).** Alguien
+se ha llevado Liderarrr a su casa y ha resuelto por su cuenta cosas que aquí estaban peor o no
+estaban. Se han portado a mano, con sus tests; gracias.
+
+### Añadido
+- **¿Qué álbumes son?** *Calidad y disco* daba los totales; ahora da los nombres: qué álbumes
+  están a 44,1 kHz, a 48 kHz o a cualquier otra frecuencia, cuáles tienen pistas sin ReplayGain
+  y cuáles no tienen imagen en su carpeta. Con buscador y un botón para **copiar la lista**
+  (también cuando abres la app por HTTP). Un álbum que mezcla frecuencias sale en las dos
+  listas y lo dice.
+- Las tarjetas de arriba cuentan **álbumes**, con las pistas debajo: «¿cuántos discos tengo con
+  pérdida?» es la pregunta, no cuántas pistas.
+
+### Mejorado
+- **La carátula ya no tiene que llamarse «cover».** Solo se reconocía una imagen con «cover»,
+  «folder», «front» o «album» en el nombre; un disco con `scan.jpg` o `portada.png` contaba
+  como sin imagen. Ahora vale cualquier imagen de la carpeta (las de siempre tienen
+  preferencia). Se aplica sola en el próximo escaneo, también a los discos que no han cambiado.
+- **Carpetas que ya no están, más fino:**
+  - «No lo puedo leer» ya no es «no existe». Solo cuenta como desaparecido lo que el sistema
+    dice que no existe; un fallo de permisos o un corte de la red es una duda, y con la duda
+    no se marca ni se quita nada.
+  - También se detecta la carpeta que sigue ahí pero **ya sin audio** dentro.
+  - Una carpeta de música se da por viva solo si conserva alguno de tus discos, no porque
+    «no esté vacía» (detrás de un volumen caído pueden quedar restos).
+  - Al quitar una ficha, la discografía y los retos pasan a apuntar a la **otra copia** del
+    disco si la hay, en vez de quedarse sin disco hasta la limpieza de la noche.
+
+Lo que **no** se ha traído del fork: que las fichas se borren solas sin preguntar. Aquí se
+marcan y decides tú.
+
+---
+
+## [1.8.2] - 2026-11-22
+
+**Artistas con un «MBID» que no era un MBID.** Lo que traen las etiquetas en «MusicBrainz
+Artist Id» se guardaba tal cual, y hay etiquetadores que meten ahí dos identificadores pegados
+(una colaboración), un número de Discogs o un id de Spotify. Cada refresco le pedía a
+MusicBrainz la discografía de algo que no existe: error 400 en Diagnóstico todas las noches, y
+ese artista sin discografía ni completismo.
+
+### Arreglado
+- De las etiquetas solo se acepta un identificador de MusicBrainz de verdad (artista, álbum,
+  edición y grabación). Si vienen dos pegados, vale el primero.
+- **Al arrancar se limpian los que ya estaban guardados mal.** Solo se quita el identificador;
+  la ficha, sus discos y su seguimiento no cambian, y la identificación normal le pondrá el
+  bueno cuando lo encuentre.
+
+---
+
+## [1.8.1] - 2026-11-22
+
+**Cuatro flecos que quedaban del repaso.**
+
+### Arreglado
+- **«Exportar base de datos» entrega una instantánea**, como las copias de seguridad. Antes
+  mandaba el fichero en uso: si un escaneo o el refresco nocturno escribían durante la
+  descarga, lo que te llevabas podía salir a medio escribir.
+- Una etiqueta con «.» o «..» como artista o álbum ya no puede sacar el disco de su carpeta al
+  importarlo, y un punto inicial suelto ya no crea una carpeta oculta que el escáner no vería.
+- «Mover todos» (Correcciones) exige en el servidor la misma confirmación expresa que mover
+  una sola carpeta.
+- Cada restauración de la base dejaba una copia entera de la anterior y nadie las quitaba: se
+  conservan las tres más recientes.
+
+---
+
+## [1.8.0] - 2026-11-22
+
+**La otra mitad del repaso: la interfaz.** Se recorrieron las 25 páginas sobre una copia de una
+base real, en tema claro y en móvil, midiendo contraste y desbordes, y se leyó el código de la
+web buscando lo que falla en silencio. Y de mirar esa base salen cuatro tareas nuevas.
+
+### Añadido
+- **Carátulas de antemano.** Tres de cada cuatro discos no tienen imagen en su carpeta: la
+  carátula se saca del audio o se busca fuera la primera vez que abres el disco, y esa primera
+  vez se veía el hueco. Ahora se van dejando listas cada noche (hasta 1.500) y hay un botón en
+  *Calidad y disco* para adelantar una tanda.
+- **Carpetas que ya no están.** Si mueves o renombras una carpeta con otra herramienta, el
+  disco viejo se quedaba en la app para siempre, contando como tuyo. Tras cada escaneo se
+  marcan y aparecen en *Calidad y disco*, donde puedes quitarlos (solo la ficha: no se borra
+  ningún fichero). No se quita nada solo, y si de golpe falta mucho se entiende que es el
+  volumen y no se marca nada.
+- **Fichas de artista repetidas.** *Artistas* avisa cuando un nombre tiene dos fichas con los
+  discos repartidos, y las funde en una con un clic.
+- **Los pedidos caducan.** Una descarga pedida que no llega en 14 días (configurable) deja de
+  contar como «en camino»: antes bloqueaba para siempre volver a pedir ese disco. El deseo de
+  «Lo quiero» correspondiente vuelve a buscarse.
+- **La app recuerda dónde estabas.** La Discoteca vuelve a la misma altura y con las mismas
+  páginas cargadas; Lanzamientos, Géneros, Sellos, Retos y Artistas guardan pestaña y filtros
+  en la dirección. El enlace de volver de las fichas de artista y de género ya no es fijo.
+
+### Tema claro y móvil
+- **El tema claro se lee.** Los textos ámbar, dorados, verdes, azules y rojos estaban pensados
+  para fondo oscuro y sobre blanco quedaban entre 1,6:1 y 2,8:1. Ahora pasan todos de 4,5:1.
+  De paso se descubrió que el dorado de botones y pestañas activas (112 usos) no generaba
+  ningún estilo: ahora sí es dorado, también en oscuro.
+- En oscuro, los grises de los textos secundarios suben lo justo para pasar de 4,5:1.
+- **En el móvil ya no se sale nada:** Artistas, Calidad, Huecos, Sin identificar, Retos,
+  Seguidos y Correcciones desbordaban la pantalla a 375 px.
+- **Las listas largas van por tandas.** Artistas pintaba 5.000 fichas de golpe (y decía «5000»
+  cuando hay más), Sin identificar 2.898 (6,5 segundos hasta poder tocar nada). Ahora cargan
+  al bajar y dicen «300 de 5.149».
+
+### Arreglado
+- **En los diálogos de borrar, el foco empieza en «Cancelar»:** antes Enter confirmaba.
+- «Mover» una carpeta desde Correcciones no preguntaba; un «Mover todos» a medias salía en verde.
+- **Ajustes guarda solo lo que cambias**, avisa si el guardado falla y ya no se queda girando
+  si no puede cargar.
+- **Lanzamientos:** una respuesta lenta o un sondeo en segundo plano podían pisar la lista de
+  la pestaña en la que estabas. Igual con los selectores de periodo de Escuchas y Resumen y
+  los filtros de Géneros.
+- El panel de copias de un disco (×N) no se enteraba de «Marcar como la mejor».
+- Enlazar un MBID que ya tenía otra ficha fundía las dos sin avisar: ahora pregunta antes.
+- Las letras de una pista podían aparecer bajo otra si pulsabas dos seguidas.
+- Géneros solo enseñaba 120 discos por género; ahora hay «Ver más».
+- Muchos botones callaban al fallar (seguir, descartar, marcar rareza…): ahora lo dicen. Y un
+  fallo ya no sustituye la página entera por un cuadro rojo.
+- «Descargar todos» pregunta antes de lanzar las búsquedas, no se puede disparar dos veces y
+  al acabar dice qué no encontró.
+- Los diálogos se cierran con Escape; los botones invisibles ya no se pulsan sin querer en
+  pantallas táctiles.
+- Al escribir etiquetas, la ficha avisa de cuántos ficheros se van a separar de la descarga.
+
+---
+
+## [1.7.4] - 2026-11-22
+
+**Repaso a fondo del servidor.** Salió de pasar la app entera por una copia de una base real
+(33.516 álbumes) y de leer el código buscando lo que puede dañar datos. Nada de esto se veía
+en el día a día, que es justo el problema.
+
+### Trackers
+- **La auto-descarga tenía un tope que no topaba.** Contaba descargas conseguidas, no
+  búsquedas: un disco sin release (o que aún no ha salido) costaba una o dos búsquedas y no
+  contaba. Con 150 candidatos eran unas 300 búsquedas cada noche. Ahora el tope cuenta discos
+  **buscados**, lo que no dio nada no se reintenta hasta pasados 3 días, y lo ya publicado va
+  antes que lo que está por salir.
+- **Lidarr pasa por el mismo freno** que Prowlarr y Jackett cuando su petición acaba en un
+  tracker (buscar un álbum, listar sus releases, agarrar una).
+- **Un título corto ya no agarra cualquier cosa.** «1», «X» o «Up» casaban con cualquier año o
+  formato del nombre de la release; ahora tienen que aparecer como palabra.
+
+### Importación
+- **Un pedido registrado sin artista borraba el artista de las etiquetas** y el disco acababa en
+  «Artista desconocido». Ahora un dato vacío no pisa nada, y si las etiquetas tampoco lo dicen
+  se saca del nombre de la carpeta («Artista - Álbum (2016) [FLAC]»).
+- Las palabras «undefined» y «null» ya no pueden acabar siendo el nombre de una carpeta.
+- **No se mezclan dos copias en una carpeta.** Si el destino ya tiene otros ficheros de audio
+  (tenías el MP3 y llega el FLAC), va a una carpeta hermana con el formato en el nombre.
+- **Una importación con ficheros que no se pudieron enlazar ya no se da por hecha.**
+- Los nombres que empiezan por punto y cifra («.38 Special») ya no se toman por basura.
+
+### Tu biblioteca
+- **Reescanear una carpeta borraba las letras de ese disco** (bastaba con guardarle una
+  carátula). Las letras y las huellas acústicas se conservan.
+- **Escribir etiquetas ya no puede romper lo que siembras:** si el fichero está enlazado a la
+  descarga, primero se separa de ella.
+- **Los títulos en otro alfabeto o de solo símbolos** («Корвет», «>>>>», «♡») se quedaban en
+  nada al compararlos, así que tener uno contaba como tener todos los demás.
+- «Ordenar en su carpeta» se niega si dentro de la carpeta viven otros discos, y si la base
+  no acepta el cambio devuelve la carpeta a su sitio.
+- «Borrar del disco» dice la verdad si solo pudo borrar una parte, y nunca «limpia» la raíz
+  de la biblioteca.
+
+### Ajustes y seguridad
+- **Guardar Ajustes ya no puede rebobinar el estado de la app.** El servidor ignora las marcas
+  internas (último refresco nocturno, cola de Lidarr, token de Spotify…) que la página
+  devolvía al guardar: una pestaña abierta desde ayer podía repetir el refresco nocturno.
+- El token de Spotify ya no sale por la API de ajustes.
+- **Las credenciales que estaban guardadas en claro se cifran al arrancar** (si tienes
+  `LIDERARRR_SECRET`). Y si la frase de paso falta o cambia, la app lo dice en vez de mandar
+  el texto cifrado a Last.fm o Spotify como si fuera la clave.
+- La página de retorno de Spotify escapaba mal un texto que viene de la URL.
+- El bloqueo por intentos fallidos de contraseña ahora bloquea de verdad.
+- La API key de Jackett ya no puede aparecer en un mensaje de error.
+
+### Mensajes que mentían o callaban
+- «Enviar prueba» decía «enviada» sin webhook configurado.
+- **«Probar AcoustID» comprueba la clave de verdad** y explica qué falla. Además, cuando
+  AcoustID rechaza las consultas ahora queda dicho en Diagnóstico: antes todo salía «sin
+  reconocer» y nada lo explicaba.
+- Una copia de seguridad que falla por falta de sitio ya avisa y espera, en vez de
+  reintentarse cada minuto en silencio.
+
+---
+
 ## [1.7.3] - 2026-11-21
 
 **«Probar Prowlarr» te dice qué indexer está callado y por qué.** Una búsqueda de Prowlarr es

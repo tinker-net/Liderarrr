@@ -506,12 +506,16 @@ export function artists({ q, sort, limit = 5000, tracked, missing } = {}) {
 // (Deluxe Edition) CD2" caen en el mismo grupo.
 const DUP_STRIP = /\b(deluxe|remaster(ed)?|expanded|anniversary|edition|version|reissue|mono|stereo|bonus|remix(es|ed)?|disc\s*\d+|cd\s*\d+)\b/gi;
 export function normalizeForDup(title) {
-  return String(title || '')
+  const base = String(title || '')
     .toLowerCase()
     .replace(/[([{][^)\]}]*[)\]}]/g, ' ')
-    .replace(DUP_STRIP, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+    .replace(DUP_STRIP, ' ');
+  const latino = base.replace(/[^a-z0-9]+/g, ' ').trim();
+  // Igual que normName: un título en otro alfabeto o de solo símbolos no puede quedarse
+  // en nada, o dos discos distintos del mismo artista salen como copias el uno del otro.
+  if (latino && !/[^\P{L}\p{Script=Latin}]/u.test(base)) return latino;
+  const amplio = base.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return amplio || latino || String(title || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 // Puntúa una copia para recomendar cuál CONSERVAR (mayor = mejor): manda la
@@ -631,7 +635,9 @@ export function setAlbumTitle(albumId, title) {
 
 // Nombres de artistas de tu biblioteca, para sugerir (datalist) al corregir a mano.
 export function artistNames() {
-  return db.prepare('SELECT name FROM artists ORDER BY name COLLATE NOCASE').all().map((r) => r.name);
+  // DISTINCT: con dos fichas del mismo artista el nombre salía dos veces y el desplegable
+  // de «corregir artista» lo repetía.
+  return db.prepare('SELECT DISTINCT name FROM artists ORDER BY name COLLATE NOCASE').all().map((r) => r.name);
 }
 
 // Ámbito de completismo del artista: 'albums' (solo álbumes de estudio) o 'all'
@@ -678,6 +684,49 @@ function mergeArtistInto(fromId, intoId) {
   db.prepare('DELETE FROM artist_stats WHERE artist_id = ?').run(fromId); // se recalcula al enriquecer
   db.prepare('DELETE FROM artists WHERE id = ?').run(fromId);
   return { albums };
+}
+
+// Fichas con el MISMO nombre (sin distinguir mayúsculas). Casi siempre es el mismo artista
+// dos veces: la ficha que creó el escáner y la que creó la identificación con su MBID. Sus
+// discos, su seguimiento y su completismo andan repartidos entre las dos.
+export function duplicateArtists() {
+  const filas = db
+    .prepare(
+      `SELECT a.id, a.name, a.mbid, a.disambiguation,
+              (SELECT count(*) FROM albums al WHERE al.artist_id = a.id) AS albums,
+              (SELECT count(*) FROM tracked_artists t WHERE t.artist_id = a.id) AS seguido
+       FROM artists a
+       WHERE lower(a.name) IN (SELECT lower(name) FROM artists GROUP BY lower(name) HAVING count(*) > 1)
+       ORDER BY lower(a.name), (a.mbid IS NULL), albums DESC`
+    )
+    .all();
+  const grupos = new Map();
+  for (const f of filas) {
+    const k = f.name.toLowerCase();
+    if (!grupos.has(k)) grupos.set(k, { name: f.name, fichas: [] });
+    grupos.get(k).fichas.push(f);
+  }
+  // dos fichas con MBID distinto son dos artistas de verdad que se llaman igual: no se proponen
+  return [...grupos.values()].filter((g) => new Set(g.fichas.map((f) => f.mbid).filter(Boolean)).size <= 1);
+}
+
+// Funde la ficha `fromId` en `intoId`. Solo filas, sin tocar ficheros. Se niega si las dos
+// tienen MBID distinto: en MusicBrainz son artistas diferentes.
+export function mergeArtists(fromId, intoId, { confirm } = {}) {
+  if (confirm !== true) throw new Error('Sin confirmar: no se funde nada');
+  if (!fromId || !intoId || fromId === intoId) throw new Error('Hacen falta dos fichas distintas');
+  const from = db.prepare('SELECT id, name, mbid FROM artists WHERE id = ?').get(fromId);
+  const into = db.prepare('SELECT id, name, mbid FROM artists WHERE id = ?').get(intoId);
+  if (!from || !into) throw new Error('Alguna de las dos fichas ya no existe');
+  if (from.mbid && into.mbid && from.mbid !== into.mbid) {
+    throw new Error('Las dos fichas tienen MBID distinto: en MusicBrainz son artistas diferentes, no se funden');
+  }
+  let res;
+  db.transaction(() => {
+    res = mergeArtistInto(fromId, intoId);
+    if (!into.mbid && from.mbid) db.prepare('UPDATE artists SET mbid = ? WHERE id = ?').run(from.mbid, intoId);
+  })();
+  return { ok: true, into: intoId, name: into.name, ...res };
 }
 
 export function setArtistMbid(id, mbid) {
@@ -757,6 +806,8 @@ export function qualityOverview() {
     SUM(CASE WHEN lossless=0 THEN 1 ELSE 0 END) AS lossy,
     COUNT(*) AS total FROM tracks`).get();
   const noReplaygain = db.prepare('SELECT COUNT(*) AS n FROM tracks WHERE has_replaygain = 0').get().n;
+  // Los mismos datos contados por ÁLBUM, que es lo que uno quiere saber («¿cuántos discos
+  // tengo con pérdida?») y no por pista. Basta una pista para que el álbum cuente.
   const albumCounts = db.prepare(`SELECT
     COUNT(DISTINCT CASE WHEN t.lossless = 1 THEN a.id END) AS lossless,
     COUNT(DISTINCT CASE WHEN t.lossless = 0 THEN a.id END) AS lossy,
