@@ -60,7 +60,7 @@ Liderarrr es una imagen Docker. Corre en cualquier máquina de tu red con acceso
 ```yaml
 services:
   liderarrr:
-    image: ghcr.io/probertoj/liderarrr:latest
+    image: ghcr.io/tinker-net/liderarrr:latest
     container_name: liderarrr
     restart: unless-stopped
     ports:
@@ -111,9 +111,7 @@ La imagen se reconstruye en cada publicación. Para traer la última:
 docker compose pull && docker compose up -d
 ```
 
-También puedes fijar una versión concreta (`ghcr.io/probertoj/liderarrr:v1.0.0`). El **badge de
-versión** de la barra lateral confirma qué estás corriendo, y Liderarrr te avisa dentro de la app
-cuando hay una versión nueva.
+La etiqueta `latest` sigue la rama estable `main` del fork después de superar las pruebas.
 
 ### Guías paso a paso por plataforma
 

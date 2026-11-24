@@ -1,5 +1,4 @@
 import { db, getSetting, setSetting } from './db.js';
-import { esMbid } from './mbid.js';
 import { acquire } from './ratelimit.js';
 
 // Lidarr es el ACTUADOR, no el catálogo (igual que Radarr en PowaFlex). Solo dos
@@ -90,19 +89,9 @@ ON CONFLICT(rg_mbid) DO UPDATE SET title=excluded.title, artist=excluded.artist,
 `);
 
 export async function lidarrSync() {
-  const [albums, artists] = await Promise.all([lidarrFetch('/album'), lidarrFetch('/artist')]);
-  if (!Array.isArray(artists) || !Array.isArray(albums)) throw new Error('Respuesta incompleta de Lidarr');
+  const albums = await lidarrFetch('/album');
   const now = Date.now();
   const tx = db.transaction((rows) => {
-    db.prepare('DELETE FROM agenda_lidarr_artists').run();
-    const add = db.prepare('INSERT OR IGNORE INTO artists (mbid,name) VALUES (?,?)');
-    const monitor = db.prepare('INSERT OR IGNORE INTO agenda_lidarr_artists VALUES (?)');
-    for (const artist of artists) {
-      if (artist.monitored && esMbid(artist.foreignArtistId) && artist.artistName) {
-        add.run(artist.foreignArtistId, artist.artistName);
-        monitor.run(artist.foreignArtistId);
-      }
-    }
     db.prepare('DELETE FROM lidarr_albums').run();
     for (const a of rows) {
       if (!a.foreignAlbumId) continue;

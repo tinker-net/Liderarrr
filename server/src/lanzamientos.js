@@ -240,6 +240,7 @@ export function candidatos({ desde, hoy = hoyLocal() } = {}) {
       artist_mbid: r.artist_mbid || null,
       cover: r.image || null,
       url: r.url || null,
+      fuenteId: `radar:${r.source}:${r.curator_username}`,
       curador: r.curator,
       // la columna `type` de una tier list no es un tipo: es el veredicto del curador
       // («Sí», «Meh», «No»…). Se enseñaba el disco como recomendación sin decir cuál.
@@ -255,7 +256,7 @@ const VENTANA = { porvenir: 0, recientes: 90, descubrir: 30, todo: 400 };
 
 // La lista de una vista. `alcance`: 'sigo' (artistas y sellos que sigues) o 'coleccion'
 // (además, cualquier artista del que tengas algo). `tipos`: los que se quieren ver.
-export function lanzamientos({ vista = 'porvenir', alcance = 'sigo', tipos = ['album', 'ep'], reediciones = false, dias = null, conTuyos = false, hoy = hoyLocal() } = {}) {
+export function lanzamientos({ vista = 'porvenir', alcance = 'sigo', tipos = ['album', 'ep'], reediciones = false, dias = null, conTuyos = false, ocultas = [], hoy = hoyLocal() } = {}) {
   const ventana = Math.max(1, Number(dias) || VENTANA[vista] || 90);
   // se pide siempre la ventana más ancha que hace falta para contar las tres vistas
   const atras = Math.max(ventana, VENTANA.recientes, VENTANA.descubrir);
@@ -266,7 +267,10 @@ export function lanzamientos({ vista = 'porvenir', alcance = 'sigo', tipos = ['a
   const pedidos = activeRequestRgs();
   const quiere = new Set(tipos);
 
-  const filas = fundir(candidatos({ desde, hoy }), { hoy }).map((f) => ({
+  const apagadas = new Set(ocultas);
+  const ids = { sello: 'labels', cancion: 'deezer', descubre: 'discover' };
+  const visibles = candidatos({ desde, hoy }).filter((c) => !apagadas.has(c.fuenteId || ids[c.fuente] || c.fuente));
+  const filas = fundir(visibles, { hoy }).map((f) => ({
     ...f,
     relacion: relacionDe(f, idx),
     owned: f.artistas.some((a) => tuyo(f.rg_mbid, a.name, f.title)),

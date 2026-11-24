@@ -135,7 +135,6 @@ import { diagnostics, pushEvent } from './diag.js';
 import { updateCheck } from './update.js';
 import { installErrorHandler } from './httperrors.js';
 import * as q from './queries.js';
-import { registerAgenda } from './personalagenda.js';
 import { registerLibrarySync } from './libsync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -640,7 +639,14 @@ const TIPOS_LANZ = new Set(['album', 'ep', 'single', 'otro']);
 app.get('/api/lanzamientos', async (req) => {
   const qy = req.query || {};
   const tipos = String(qy.tipos || 'album,ep').split(',').filter((t) => TIPOS_LANZ.has(t));
+  let ocultas;
+  try {
+    ocultas = JSON.parse(qy.ocultas || '[]');
+  } catch {
+    ocultas = [];
+  }
   return lanzamientos({
+    ocultas: Array.isArray(ocultas) ? ocultas : [],
     vista: ['porvenir', 'recientes', 'descubrir', 'todo'].includes(qy.vista) ? qy.vista : 'porvenir',
     alcance: qy.alcance === 'coleccion' ? 'coleccion' : 'sigo',
     tipos: tipos.length ? tipos : ['album', 'ep'],
@@ -664,7 +670,6 @@ app.post('/api/lanzamientos/restaurar', async (req, reply) => {
   }
 });
 app.get('/api/discover/gaps', async (req) => gaps({ onlyTracked: req.query?.all !== '1' }));
-registerAgenda(app);
 app.get('/api/discover/upcoming', async (req) => upcoming({ onlyTracked: req.query?.all !== '1' }));
 app.get('/api/discover/recent', async (req) =>
   recentlyReleased({ since: req.query?.since || null, onlyTracked: req.query?.all !== '1' })

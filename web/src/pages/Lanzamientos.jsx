@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   CalendarClock, Heart, MoreHorizontal, Download, Search, ExternalLink, X, Star, Disc3, SlidersHorizontal,
-  ChevronLeft, ChevronRight, Loader2, RefreshCw, Check, Undo2,
+  Radio, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Check, Undo2,
 } from 'lucide-react';
+import { BASE_SOURCES, curatorSourceId, loadSourcesOff, saveSourcesOff } from '../sources.js';
 import { api } from '../api.js';
 import { PageTitle, Spinner, ErrorMsg, SearchModal, WantButton, AddToChallengeButton, Button, useLidarrEnabled, useEscape } from '../components.jsx';
 import { aviso } from '../avisos.jsx';
@@ -311,7 +312,69 @@ function Mes({ items, hoy, fila }) {
 }
 
 // ------------------------------------------------------------------------ panel de fuentes
-function Fuentes({ alCerrar, alCambiar }) {
+function SourcePicker({ curators, off, setOff }) {
+  const [open, setOpen] = useState(false);
+  const sources = [
+    ...BASE_SOURCES,
+    ...curators.map((c) => ({
+      id: curatorSourceId(c.source, c.username),
+      label: `Radar · ${c.name || c.username}`,
+      hint: `${c.items} novedades`,
+    })),
+  ];
+  const onCount = sources.filter((s) => !off.has(s.id)).length;
+  const toggle = (id) =>
+    setOff((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      saveSourcesOff(n);
+      return n;
+    });
+  const setAll = (on) => {
+    const n = on ? new Set() : new Set(sources.map((s) => s.id));
+    saveSourcesOff(n);
+    setOff(n);
+  };
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-neutral-400 hover:text-gold-300 inline-flex items-center gap-1.5"
+        title="Elige de qué fuentes quieres ver novedades"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Radio size={13} /> Fuentes <span className="text-neutral-600">· {onCount}/{sources.length}</span>
+      </button>
+      {open && (
+        <div className="card p-3 mt-2 space-y-2">
+          <div className="flex gap-2">
+            <button onClick={() => setAll(true)} className="text-xs px-2 py-0.5 rounded border border-ink-700 bg-ink-850 hover:bg-ink-800">
+              Todas
+            </button>
+            <button onClick={() => setAll(false)} className="text-xs px-2 py-0.5 rounded border border-ink-700 bg-ink-850 hover:bg-ink-800">
+              Ninguna
+            </button>
+          </div>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {sources.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer min-w-0">
+                <input type="checkbox" checked={!off.has(s.id)} onChange={() => toggle(s.id)} />
+                <span className="truncate">{s.label}</span>
+                <span className="text-xs text-neutral-600 truncate">{s.hint}</span>
+              </label>
+            ))}
+          </div>
+          {curators.length === 0 && (
+            <p className="text-xs text-neutral-600">Los curadores del Radar aparecerán aquí cuando sigas alguno.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Fuentes({ alCerrar, alCambiar, off, setOff }) {
   const [sellos, setSellos] = useState(null);
   const [curadores, setCuradores] = useState(null);
   const [barrido, setBarrido] = useState(null); // texto de progreso
@@ -367,6 +430,7 @@ function Fuentes({ alCerrar, alCambiar }) {
           Los artistas que sigues se gestionan en <Link to="/seguidos" className="text-gold-400 hover:underline">Seguidos</Link>. Aquí, los sellos y las
           personas cuyo criterio te fías. Todo se actualiza solo cada noche.
         </p>
+        <SourcePicker curators={curadores || []} off={off} setOff={setOff} />
         <h3 className="text-sm text-neutral-300 mb-2">Sellos que sigues</h3>
         {sellos ? <LabelManager labels={sellos} onChange={cambio} /> : <Spinner />}
         <h3 className="text-sm text-neutral-300 mt-5 mb-2">Curadores (quién te recomienda)</h3>
@@ -423,13 +487,15 @@ export default function Lanzamientos() {
   const [vigilando, setVigilando] = useState(null);
   const relojDeshacer = useRef(null);
 
-  const consulta = `${vista}|${alcance}|${tipos.join(',')}|${reediciones}|${conTuyos}|${dias}`;
+  const [off, setOff] = useState(loadSourcesOff);
+  const ocultas = JSON.stringify([...off]);
+  const consulta = `${vista}|${alcance}|${tipos.join(',')}|${reediciones}|${conTuyos}|${dias}|${ocultas}`;
   useEffect(() => {
     let vigente = true;
     setErr(null);
     setDatos(null);
     api
-      .lanzamientos({ vista: vista === 'mes' ? 'todo' : vista, alcance, tipos: tipos.join(','), reediciones, dias, tuyos: conTuyos })
+      .lanzamientos({ ocultas, vista: vista === 'mes' ? 'todo' : vista, alcance, tipos: tipos.join(','), reediciones, dias, tuyos: conTuyos })
       .then((d) => vigente && setDatos(d))
       .catch((e) => vigente && setErr(e.message));
     return () => {
@@ -664,7 +730,7 @@ export default function Lanzamientos() {
       )}
 
       {buscar != null && <SearchModal initialQuery={buscar} onClose={() => setBuscar(null)} />}
-      {fuentes && <Fuentes alCerrar={() => setFuentes(false)} alCambiar={() => setVuelta((v) => v + 1)} />}
+      {fuentes && <Fuentes off={off} setOff={setOff} alCerrar={() => setFuentes(false)} alCambiar={() => setVuelta((v) => v + 1)} />}
     </div>
   );
 }

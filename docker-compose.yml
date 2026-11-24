@@ -1,6 +1,6 @@
 services:
   liderarrr:
-    image: ghcr.io/probertoj/liderarrr:latest
+    image: ghcr.io/tinker-net/liderarrr:latest
     # Para construir localmente en vez de usar la imagen publicada:
     # build: .
     container_name: liderarrr

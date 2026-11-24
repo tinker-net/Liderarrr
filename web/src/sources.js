@@ -26,21 +26,3 @@ export function saveSourcesOff(set) {
     /* sin persistencia si el navegador no deja */
   }
 }
-
-// Fuente de una fila de lista, según la pestaña en la que está.
-export function rowSource(view, r) {
-  if (view === 'radar') return curatorSourceId(r.source, r.curator_username);
-  if (view === 'labels') return 'labels';
-  if (view === 'descubre') return 'discover';
-  if (view === 'novedades' || view === 'canciones') return 'deezer';
-  return 'mb'; // upcoming | recent
-}
-
-// Fuente de un evento del calendario Mes, según su tipo.
-export function kindSource(kind, x) {
-  if (kind === 'upcoming' || kind === 'recent') return 'mb';
-  if (kind === 'label') return 'labels';
-  if (kind === 'novedad' || kind === 'single') return 'deezer';
-  if (kind === 'descubre') return 'discover';
-  return curatorSourceId(x.source, x.curator_username); // radar
-}

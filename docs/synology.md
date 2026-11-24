@@ -30,7 +30,7 @@ ejemplo `/music` o `/volume1/Musica`.
 ```yaml
 services:
   liderarrr:
-    image: ghcr.io/probertoj/liderarrr:latest
+    image: ghcr.io/tinker-net/liderarrr:latest
     container_name: liderarrr
     restart: unless-stopped
     ports:

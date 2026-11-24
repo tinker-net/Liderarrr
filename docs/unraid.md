@@ -15,7 +15,7 @@ Liderarrr en `http://IP-DE-TU-SERVIDOR:3861`.
 | Campo | Valor |
 |---|---|
 | **Name** | `Liderarrr` |
-| **Repository** | `ghcr.io/probertoj/liderarrr:latest` |
+| **Repository** | `ghcr.io/tinker-net/liderarrr:latest` |
 | **Network Type** | `bridge` |
 | **WebUI** | `http://[IP]:[PORT:3861]/` |
 
