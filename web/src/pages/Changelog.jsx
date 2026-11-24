@@ -9,6 +9,37 @@ import { PageTitle } from '../components.jsx';
 
 const RELEASES = [
   {
+    version: '2.0.2',
+    title: 'Lanzamientos abre en el calendario',
+    items: [
+      'Lanzamientos abre en el calendario: es lo primero que se quiere ver. Las tres listas (Por venir, Recién salido, Descubrir) siguen a un clic, y el botón «Calendario» pasa a ir delante de ellas.',
+    ],
+  },
+  {
+    version: '2.0.1',
+    title: 'El botón «Discografía» pregunta de verdad a MusicBrainz',
+    items: [
+      'Los discos nuevos no aparecían, pulsaras lo que pulsaras: la lista de discos de cada artista se guardaba 30 días y ni el botón «Discografía» ni el refresco nocturno volvían a preguntar a MusicBrainz.',
+      '«Discografía» pregunta ahora en el momento y dice qué ha pasado: «trae 1 lanzamiento nuevo: …» o «no hay nada nuevo».',
+      'Los artistas que sigues se consultan cada noche; el resto de tu colección, una vez por semana, repartido entre las noches.',
+      'Sellos seguidos: el icono de refrescar pregunta de verdad, y su catálogo se renueva cada tres noches.',
+      'La ficha decía «Aún no se ha calculado la discografía» de artistas sin álbumes de estudio (solo EP y singles), aunque sí lo estuviera. Y ahora enseña cuándo se consultó MusicBrainz por última vez.',
+    ],
+  },
+  {
+    version: '2.0.0',
+    title: 'Lanzamientos, rehecho: tres preguntas en vez de nueve pestañas',
+    items: [
+      'Lanzamientos, rehecho. Estaba organizada por de dónde viene cada dato: nueve pestañas, el mismo disco repetido en varias y hasta siete botones por fila, que dejaban al título 126 píxeles.',
+      'Ahora son tres vistas: Por venir, Recién salido (lo que ya salió y te falta) y Descubrir (lo que te recomiendan de artistas que no tienes).',
+      'Una fila, un disco: las siete fuentes se funden, y cada fila dice por qué está ahí («Sigues al artista», «Sello Merge», «Lo recomienda calltheranger»).',
+      'Una acción principal (♥ Lo quiero) y el resto en un menú «⋯». «No me interesa» se puede deshacer.',
+      'El calendario pasa a ser una forma de ver, con los mismos filtros: de quién (lo que sigues o toda tu colección), tipo y desde cuándo.',
+      '«Lo quiero» tiene su propia página en el menú, y «Fuentes» reúne en un panel los sellos y curadores que sigues.',
+      'Arreglado de paso: qué está por salir se decide por la fecha en el momento (un disco ya publicado seguía días en «Próximos»), las fechas de solo año, la hora UTC de madrugada y la casilla «Todos los artistas», que estaba al revés.',
+    ],
+  },
+  {
     version: '1.9.3',
     title: 'Un disco que ya tienes en FLAC no es un candidato a upgrade',
     items: [

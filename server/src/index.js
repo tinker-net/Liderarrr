@@ -21,6 +21,7 @@ import {
 import { discosDesaparecidos, olvidarDisco, olvidarTodos, marcarDesaparecidos } from './missing.js';
 import { limpiarMbidInvalidos } from './mbid.js';
 import { registerQualityLists } from './qualitylists.js';
+import { lanzamientos, descartarLanzamiento, restaurarLanzamiento } from './lanzamientos.js';
 import { warmCovers, coverWarmStatus, coversPendientes } from './covers.js';
 import { runScan, scanStatus, purgeJunkFromDb } from './scanner.js';
 import { purgeVariousArtists } from './various.js';
@@ -64,6 +65,7 @@ import {
   discographyStatus,
   artistCompleteness,
 } from './discography.js';
+import { FRESCURA } from './cache-versions.js';
 import {
   followArtist,
   unfollowArtist,
@@ -357,6 +359,8 @@ app.get('/api/artists/:id', async (req, reply) => {
     missingEps: comp.missingEps,
     missingSingles: comp.missingSingles,
     upcoming: comp.upcoming,
+    calculada: comp.calculada,
+    visto: comp.visto,
   };
   // Estado «ya pedido» de cada hueco: del registro NATIVO (requested/importing) siempre, y
   // de Lidarr SOLO si sigue conectado (si no, su tabla queda vieja tras «liberar de Lidarr»
@@ -459,7 +463,7 @@ app.put('/api/artists/:id/mbid', async (req, reply) => {
     const r = q.setArtistMbid(id, req.body?.mbid);
     let discography = null;
     try {
-      discography = await enrichArtistDiscography(id);
+      discography = await enrichArtistDiscography(id, { maxAge: FRESCURA.boton });
     } catch (e) {
       discography = { error: String(e.message || e) };
     }
@@ -471,7 +475,9 @@ app.put('/api/artists/:id/mbid', async (req, reply) => {
 // recalcular la discografía de un artista bajo demanda
 app.post('/api/artists/:id/refresh-discography', async (req, reply) => {
   try {
-    const r = await enrichArtistDiscography(Number(req.params.id));
+    // El botón PREGUNTA a MusicBrainz: antes releía la copia guardada (hasta 30 días) y un
+    // disco recién publicado no aparecía por mucho que se pulsara.
+    const r = await enrichArtistDiscography(Number(req.params.id), { maxAge: FRESCURA.boton });
     return r || { error: 'El artista no tiene MBID (no está en MusicBrainz)' };
   } catch (err) {
     return reply.code(400).send({ error: String(err.message || err) });
@@ -629,6 +635,34 @@ app.post('/api/discography/refresh', async (req) => {
   return { started: true };
 });
 app.get('/api/discography/status', async () => discographyStatus);
+// Lanzamientos: una sola lista fundida por disco (ver lanzamientos.js).
+const TIPOS_LANZ = new Set(['album', 'ep', 'single', 'otro']);
+app.get('/api/lanzamientos', async (req) => {
+  const qy = req.query || {};
+  const tipos = String(qy.tipos || 'album,ep').split(',').filter((t) => TIPOS_LANZ.has(t));
+  return lanzamientos({
+    vista: ['porvenir', 'recientes', 'descubrir', 'todo'].includes(qy.vista) ? qy.vista : 'porvenir',
+    alcance: qy.alcance === 'coleccion' ? 'coleccion' : 'sigo',
+    tipos: tipos.length ? tipos : ['album', 'ep'],
+    reediciones: qy.reediciones === '1',
+    dias: Number(qy.dias) || null,
+    conTuyos: qy.tuyos === '1',
+  });
+});
+app.post('/api/lanzamientos/descartar', async (req, reply) => {
+  try {
+    return descartarLanzamiento(req.body?.refs);
+  } catch (err) {
+    return reply.code(400).send({ error: String(err.message || err) });
+  }
+});
+app.post('/api/lanzamientos/restaurar', async (req, reply) => {
+  try {
+    return restaurarLanzamiento(req.body?.refs);
+  } catch (err) {
+    return reply.code(400).send({ error: String(err.message || err) });
+  }
+});
 app.get('/api/discover/gaps', async (req) => gaps({ onlyTracked: req.query?.all !== '1' }));
 registerAgenda(app);
 app.get('/api/discover/upcoming', async (req) => upcoming({ onlyTracked: req.query?.all !== '1' }));
@@ -764,7 +798,7 @@ app.post('/api/tracked-labels', async (req, reply) => {
 app.delete('/api/tracked-labels/:mbid', async (req) => unfollowLabel(req.params.mbid));
 app.post('/api/tracked-labels/:mbid/refresh', async (req, reply) => {
   try {
-    return await refreshLabel(req.params.mbid);
+    return await refreshLabel(req.params.mbid, { maxAge: FRESCURA.boton });
   } catch (err) {
     return reply.code(400).send({ error: String(err.message || err) });
   }
